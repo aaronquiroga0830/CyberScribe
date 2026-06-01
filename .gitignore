@@ -1,0 +1,13 @@
+.venv/
+.env
+__pycache__/
+*.pyc
+data/missions/*
+!data/missions/.gitkeep
+data/indexes/
+data/agentic_rag.db
+output/
+*.faiss
+*.pkl
+node_modules/
+web/dist/

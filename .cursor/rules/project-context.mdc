@@ -1,0 +1,22 @@
+---
+description: Read project context for a full view of the codebase before making changes
+alwaysApply: true
+---
+
+# Project context
+
+When working on this codebase, **read `docs/PROJECT_MASTER.md` first** for the full picture: motivation, product definition, current vs target, architecture, RAG/HITL flows, API surface, and documentation map.
+
+That document contains:
+
+- Why the platform exists and what it is (and is not)
+- Stakeholder value and review workflow (operator → crew lead → MEL)
+- Current architecture and the dual pipeline distinction (UI vs scheduler/CLI)
+- Stack, data model, RAG pipeline, human-in-the-loop mechanics
+- REST/SSE API summary and front-end behavior
+- How to run and develop; adding a new report type
+- Links to deeper references
+
+For **file-by-file roles** while coding, use [docs/PROJECT_CONTEXT.md](docs/PROJECT_CONTEXT.md) (§4 repository layout and data flows).
+
+Use PROJECT_MASTER as the single entry point so you don’t need to re-read transcripts or re-explore the repo from scratch.

@@ -1,0 +1,17 @@
+{"sessionId":"9f299a","location":"app.ts:connectStream","message":"EventSource opening","data":{"missionId":"test1","reportType":"timeline","url":"/api/stream/test1/timeline"},"timestamp":1773514879448,"hypothesisId":"H2"}
+{"sessionId":"9f299a","location":"app.ts:accept-click","message":"Accept edit clicked","data":{"edit_id":"654321","path":"/missions/test1/reports/timeline/edits/654321/accept"},"timestamp":1773518415909,"hypothesisId":"accept-flow"}
+{"sessionId":"9f299a","location":"app.ts:accept-post-done","message":"Accept POST succeeded","data":{},"timestamp":1773518415925,"hypothesisId":"accept-flow"}
+{"sessionId":"9f299a","location":"app.ts:accept-after-fetch","message":"Pending edits after accept","data":{"count":1,"first_status":"accepted","first_edit_id":"654321"},"timestamp":1773518415933,"hypothesisId":"accept-flow"}
+{"sessionId":"9f299a","location":"app.ts:accept-click","message":"Accept edit clicked","data":{"edit_id":"654321","path":"/missions/test1/reports/timeline/edits/654321/accept"},"timestamp":1773518418359,"hypothesisId":"accept-flow"}
+{"sessionId":"9f299a","location":"app.ts:accept-post-done","message":"Accept POST succeeded","data":{},"timestamp":1773518418367,"hypothesisId":"accept-flow"}
+{"sessionId":"9f299a","location":"app.ts:accept-after-fetch","message":"Pending edits after accept","data":{"count":1,"first_status":"accepted","first_edit_id":"654321"},"timestamp":1773518418375,"hypothesisId":"accept-flow"}
+{"sessionId":"9f299a","location":"app.ts:accept-click","message":"Accept edit clicked","data":{"edit_id":"654321","path":"/missions/test1/reports/timeline/edits/654321/accept"},"timestamp":1773518418928,"hypothesisId":"accept-flow"}
+{"sessionId":"9f299a","location":"app.ts:accept-post-done","message":"Accept POST succeeded","data":{},"timestamp":1773518418936,"hypothesisId":"accept-flow"}
+{"sessionId":"9f299a","location":"app.ts:accept-after-fetch","message":"Pending edits after accept","data":{"count":1,"first_status":"accepted","first_edit_id":"654321"},"timestamp":1773518418943,"hypothesisId":"accept-flow"}
+{"sessionId":"9f299a","location":"app.ts:accept-click","message":"Accept edit clicked","data":{"edit_id":"654321","path":"/missions/test1/reports/timeline/edits/654321/accept"},"timestamp":1773518419347,"hypothesisId":"accept-flow"}
+{"sessionId":"9f299a","location":"app.ts:accept-post-done","message":"Accept POST succeeded","data":{},"timestamp":1773518419355,"hypothesisId":"accept-flow"}
+{"sessionId":"9f299a","location":"app.ts:accept-after-fetch","message":"Pending edits after accept","data":{"count":1,"first_status":"accepted","first_edit_id":"654321"},"timestamp":1773518419362,"hypothesisId":"accept-flow"}
+{"sessionId":"9f299a","location":"app.ts:accept-click","message":"Accept edit clicked","data":{"edit_id":"654321","path":"/missions/test1/reports/timeline/edits/654321/accept"},"timestamp":1773518431517,"hypothesisId":"accept-flow"}
+{"sessionId":"9f299a","location":"app.ts:accept-post-done","message":"Accept POST succeeded","data":{},"timestamp":1773518431527,"hypothesisId":"accept-flow"}
+{"sessionId":"9f299a","location":"app.ts:accept-after-fetch","message":"Pending edits after accept","data":{"count":1,"first_status":"accepted","first_edit_id":"654321"},"timestamp":1773518431534,"hypothesisId":"accept-flow"}
+{"sessionId":"9f299a","location":"app.ts:preview-set","message":"Preview set in Quill","data":{"hasInResponse":true,"hasInDom":true,"htmlLen":766},"timestamp":1773520235456,"hypothesisId":"preview-highlight"}

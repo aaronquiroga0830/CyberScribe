@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<!-- SPA: sign-in lives at #/login; authenticated home is #/. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Mission RAG</title>
+  <link rel="icon" href="/logo.png" type="image/png" />
+  <link rel="apple-touch-icon" href="/logo.png" />
+</head>
+<body>
+  <div class="app">
+    <aside class="sidebar glass">
+      <div class="sidebar-content">
+        <header class="sidebar-brand">
+          <img src="/logo.png" width="120" height="120" alt="Mission RAG" class="sidebar-logo" decoding="async" />
+          <h1 class="sidebar-title">Missions</h1>
+        </header>
+        <div id="auth-strip" class="caption" style="margin-bottom: 0.5rem;"></div>
+        <button type="button" class="btn btn-primary" id="btn-new-mission">+ New mission</button>
+        <div class="mission-list" id="mission-list"></div>
+        <div id="sidebar-status" class="caption"></div>
+      </div>
+      <button type="button" class="sidebar-toggle" id="sidebar-toggle" aria-label="Collapse sidebar" aria-expanded="true" title="Collapse sidebar"></button>
+    </aside>
+    <main class="main" id="main">
+      <div id="view-placeholder">
+        <p class="empty">Select a mission or create one.</p>
+      </div>
+    </main>
+  </div>
+  <script type="module" src="/main.ts"></script>
+</body>
+</html>
