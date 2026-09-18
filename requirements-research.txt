@@ -1,0 +1,9 @@
+-r requirements-dev.txt
+
+# Optional benchmark, screenshot, and presentation tools.
+numpy==2.4.2
+pandas==2.3.3
+matplotlib==3.10.9
+playwright==1.60.0
+python-pptx==1.0.2
+Pillow==12.1.1

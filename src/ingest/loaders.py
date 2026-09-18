@@ -2,11 +2,11 @@
 from pathlib import Path
 from typing import List
 
+from docx import Document as WordDocument
+from docx.table import Table
 from langchain_core.documents import Document
 from langchain_community.document_loaders import (
-    DirectoryLoader,
     TextLoader,
-    UnstructuredWordDocumentLoader,
     PyPDFLoader,
 )
 from langchain_community.document_loaders.base import BaseLoader
@@ -30,11 +30,29 @@ def infer_doc_type(file_path: Path, mission_path: Path) -> str:
         return "findings"
     return "other"
 
-# Map extensions to loaders. Add more as needed (e.g. UnstructuredExcelLoader).
+
+class WordDocumentLoader(BaseLoader):
+    """Read DOCX paragraphs and tables with the existing python-docx dependency."""
+
+    def __init__(self, file_path: str):
+        self.file_path = file_path
+
+    def load(self) -> List[Document]:
+        document = WordDocument(self.file_path)
+        parts = []
+        for block in document.iter_inner_content():
+            if isinstance(block, Table):
+                parts.extend("\t".join(cell.text for cell in row.cells) for row in block.rows)
+            else:
+                parts.append(block.text)
+        return [Document(page_content="\n".join(parts), metadata={"source": self.file_path})]
+
+
+# Supported source formats. DOCX uses the same library as report export.
 LOADER_MAP = {
     ".txt": TextLoader,
     ".pdf": PyPDFLoader,
-    ".docx": UnstructuredWordDocumentLoader,
+    ".docx": WordDocumentLoader,
 }
 
 
@@ -79,18 +97,5 @@ def load_mission_documents(mission_path: str | Path) -> List[Document]:
                 for d in docs:
                     d.metadata["doc_type"] = doc_type
                 all_docs.extend(docs)
-
-    # Fallback: any .txt via DirectoryLoader if you prefer glob-based
-    if not all_docs:
-        loader = DirectoryLoader(
-            str(mission_path),
-            glob="**/*.txt",
-            loader_cls=TextLoader,
-            show_progress=True,
-        )
-        all_docs = loader.load()
-        for d in all_docs:
-            src = d.metadata.get("source", "")
-            d.metadata["doc_type"] = infer_doc_type(Path(src), mission_path)
 
     return all_docs

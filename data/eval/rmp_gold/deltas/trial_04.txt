@@ -1,0 +1,2 @@
+Finding 10: Unencrypted SMB shares exposed on file server FS-03 to guest VLAN. Risk: High. Recommendation: Restrict share ACLs and require SMB signing and encryption.
+Finding 11: Security event logs on 6 hosts retain only 7 days. Risk: Medium. Recommendation: Forward logs to SIEM with 90-day retention minimum.

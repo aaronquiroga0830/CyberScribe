@@ -1,0 +1,143 @@
+LOCAL LLM BENCHMARK FOR RMP STRUCTURED UPDATES
+================================================
+
+Copy the sections below into your paper and convert headings/captions to your
+LaTeX style. Primary figures (Experiment 2, n = 10):
+
+  output/benchmark/experiment2/fig_paper_pipeline_phases.pdf   (latency)
+  output/benchmark/experiment2/fig_paper_structured_reliability.pdf   (reliability)
+
+
+EXPERIMENTAL SETUP
+------------------
+
+We evaluated three Ollama chat models—phi3, llama3.2:3b, and gemma2:2b—on
+identical mission-scoped Risk Management Plan (RMP) structured-edit jobs through
+the production pipeline orchestrator (in-process, no HTTP). Each trial used
+mission llm_benchmark over source documents in sample_mission, Ollama embeddings
+(nomic-embed-text), and update intent full_refresh. RMP updates did not trigger
+co-generation of Timeline reports. Trials were executed sequentially on a 16 GB
+RAM CPU workstation with local Ollama.
+
+Subsequent benchmark runs enforce a 5-minute wall-clock cap per trial and a
+3-minute cap per Ollama generate call (structured edit or fallback draft) so
+outlier jobs cannot run 20+ minutes. The canonical Experiment 2 run predates
+those caps; interpret long llama trials (e.g. trial 7) as uncapped outliers.
+
+We report 10 independent trials per model (canonical run). Phase timings
+(retrieval, structured-edit generation, parse/validate) were taken from pipeline
+job progress events. Structured success required at least one accepted block edit
+with no JSON parse failure and no structured-edit fallback. Factual grounding was
+scored by a local LLM-as-judge (llama3.2:3b, with cross-model assignment when
+the subject model was Llama).
+
+
+STRUCTURED-EDIT RELIABILITY
+---------------------------
+
+Figure [Y] (fig_paper_structured_reliability.pdf) reports structured success rate
+and fallback rate across all 10 trials per model. Structured success was 40% for
+gemma2:2b, 30% for llama3.2:3b, and 30% for phi3; fallback to full-draft RAG
+occurred on 60–70% of trials for each model. Reliability should be read before
+latency: most trials did not complete the intended structured-edit path.
+
+Figure [Y] caption — see output/benchmark/experiment2/fig_paper_structured_reliability_caption.txt
+
+
+PIPELINE LATENCY (STRUCTURED-SUCCESS TRIALS)
+--------------------------------------------
+
+Figure [X] (fig_paper_pipeline_phases.pdf) summarizes phase latency. Panel (A)
+shows structured-edit generation time only among trials with structured success
+(phi3 n=3, llama3.2:3b n=3, gemma2:2b n=4); whiskers are min–max within that
+subset. On those trials, gemma2:2b and llama3.2:3b completed generation in
+roughly 8–18 s; phi3 required roughly 72–107 s. Panel (B) shows retrieval and
+parse/validate overhead (tens of milliseconds for all models). Uncapped outlier
+trials (e.g. long fallback wall times) are excluded from panel (A) by design.
+
+Figure [X] caption — see output/benchmark/experiment2/fig_paper_pipeline_phases_caption.txt
+
+
+RESULTS (n = 10 per model)
+--------------------------
+
+Table [X]. RMP benchmark aggregates (Experiment 2, canonical uncapped run).
+
+  Model          Struct success   Fallback   Gen if success (s, range)   Grounding (1-5)   Hallucination
+  -------------  ---------------  ---------  --------------------------  ----------------  -------------
+  gemma2:2b      40%              60%        8.7 (8–10)                  3.90              0%
+  llama3.2:3b    30%              70%        12.6 (9–18)                 3.95              0%
+  phi3           30%              70%        85.1 (72–107)               3.20              0%
+
+  Mean generation over all trials (includes failures/outliers): gemma 14.7 s,
+  llama 165.0 s, phi3 156.4 s — use success-only column above for fair speed comparison.
+
+Results paragraph (canonical n = 10):
+
+  Structured success rates were 40% (gemma2:2b), 30% (llama3.2:3b), and 30%
+  (phi3), with fallback on 60–70% of trials. Among structured-success trials,
+  mean generation time was 8.7 s (gemma2:2b), 12.6 s (llama3.2:3b), and
+  85.1 s (phi3). Local judge mean grounding scores were 3.90 (gemma2:2b), 3.95
+  (llama3.2:3b), and 3.20 (phi3), with 0% hallucination rate on scored edits in
+  this sample. Long wall-clock outliers on failed trials reflect uncapped
+  full-draft fallback, not typical structured-edit latency.
+
+
+PILOT RUN (n = 2, superseded by n = 10 study)
+---------------------------------------------
+
+Early pilot data (Experiment 2, two trials per model) validated the harness before
+the canonical 10-trial run. These values are illustrative only.
+
+  Model          Mean gen (s)   Struct success   Fallback   Mean grounding
+  -------------  -------------  ---------------  ---------  ----------------
+  llama3.2:3b    8.6            100%             0%         4.38
+  gemma2:2b      12.1           50%              50%        4.00
+  phi3           117.2          0%               100%       4.00
+
+On the pilot data, llama3.2:3b was the only model with perfect structured success
+and sub-10 s mean generation latency. phi3 exhibited high generation latency and
+fell back to non-structured output in both trials despite judge-reported grounding
+scores of 4.0 on fallback edits. gemma2:2b showed bimodal behavior (one slow,
+fallback trial; one fast, successful trial). The 10-trial canonical run may differ,
+especially for phi3 (early canonical trials showed structured success).
+
+
+MITIGATION OF HIGH FALLBACK RATES (FOLLOW-UP)
+---------------------------------------------
+
+The canonical run exposed brittle structured JSON output (invalid escapes in
+HTML fields, array-vs-object format). We document this openly in the paper and
+implemented mitigations in the product pipeline: Ollama format=json, {"edits":[]}
+wrapper, server-side old_html from block IDs, robust parsing, and one structured
+retry before full-draft fallback. See docs/paper/STRUCTURED_EDIT_RELIABILITY.md.
+A re-benchmark (e.g. experiment2_json_mode) should report whether fallback rates
+drop; the uncapped experiment2 figures remain the honest baseline.
+
+
+INTERPRETATION AND LIMITATIONS
+------------------------------
+
+Results characterize this hardware, mission corpus, and prompt path only; they
+do not establish statistical significance without sufficient trial count and
+formal testing. Judge scores measure agreement with retrieved source text under a
+rubric, not human expert adjudication. We do not claim superiority of one model
+beyond the reported pipeline reliability and latency trade-offs on the benchmark
+mission. Retrieval for RMP used a fixed chunk list (crew_log, findings, other),
+not semantic top-k search; generation time therefore reflects structured-edit
+LLM latency under full-context retrieval.
+
+
+HOW TO REFRESH NUMBERS AFTER THE RUN
+------------------------------------
+
+  (Get-Content output\benchmark\experiment2\results.csv).Count   # expect 31
+
+  output/benchmark/experiment2/summary_table.csv
+  output/benchmark/experiment2/accuracy_summary_table.csv
+  output/benchmark/experiment2/fig_paper_pipeline_phases.pdf
+  output/benchmark/experiment2/fig_paper_structured_reliability.pdf
+
+Regenerate figures (writes only under experiment2/):
+
+  .\.venv\Scripts\python.exe scripts\llm_benchmark.py --plot --experiment-id experiment2

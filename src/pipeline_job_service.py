@@ -153,6 +153,35 @@ def fail_pipeline_job(
             )
 
 
+def cancel_pipeline_job(job_id: str, reason: str) -> None:
+    """Mark a job failed/cancelled (benchmark harness or operator abort)."""
+    fail_pipeline_job(job_id, reason, failure_kind="cancelled")
+
+
+def is_pipeline_job_cancelled(mission_id: str, job_id: str) -> bool:
+    job = get_pipeline_job(mission_id, job_id)
+    if not job:
+        return True
+    return job.get("status") == "failed" and job.get("failure_kind") == "cancelled"
+
+
+def fail_stale_running_jobs(mission_id: str, reason: str) -> int:
+    """Fail queued/running jobs for a mission (e.g. before benchmark resume)."""
+    with get_connection() as conn:
+        rows = conn.execute(
+            """
+            SELECT id FROM pipeline_jobs
+            WHERE mission_id = ? AND status IN ('queued', 'running')
+            """,
+            (mission_id,),
+        ).fetchall()
+    n = 0
+    for row in rows:
+        cancel_pipeline_job(row[0], reason)
+        n += 1
+    return n
+
+
 def add_pipeline_job_invalid_edits(job_id: str, count: int) -> None:
     if count <= 0:
         return

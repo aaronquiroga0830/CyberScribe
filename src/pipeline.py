@@ -2,13 +2,10 @@
 Long-running pipeline: for a mission, ingest from source_path and generate reports.
 Saves AI output as pending for user review (accept/reject in UI).
 Called by the scheduler daily over the mission lifecycle (e.g. 5 months).
-Index is loaded once after build, then RMP and Timeline run in parallel with the
-shared retriever to avoid concurrent index/embedding load (which can hang on Windows).
 
 Scheduler runs use the same `pipeline_jobs` records as HTTP-triggered updates (Phase 0).
 """
 from pathlib import Path
-from concurrent.futures import ThreadPoolExecutor, as_completed
 import time
 
 from src.mission_service import (
@@ -24,9 +21,7 @@ from src.agents.base import run_template_rag_agent
 from config.settings import get_ollama_base_url_for_report
 from src.templates.prompts import (
     RMP_TEMPLATE_QUERY,
-    TIMELINE_TEMPLATE_QUERY,
     RMP_GENERATION_PROMPT,
-    TIMELINE_GENERATION_PROMPT,
 )
 from src.pipeline_job_service import (
     append_pipeline_job_event,
@@ -39,8 +34,8 @@ from src.pipeline_job_service import (
 
 def run_mission_cycle(mission_id: str, retriever_k: int = 8) -> dict[str, str] | None:
     """
-    For one mission: rebuild index from source_path, run RMP + Timeline agents,
-    save results as pending. Updates last_ingest_at and last_generated_at.
+    For one mission: rebuild index from source_path, run RMP agent,
+    save result as pending. Updates last_ingest_at and last_generated_at.
     Returns dict of report_type -> content, or None if mission not found/inactive.
     """
     mission = get_mission(mission_id)
@@ -52,7 +47,7 @@ def run_mission_cycle(mission_id: str, retriever_k: int = 8) -> dict[str, str] |
 
     job_id = create_pipeline_job(
         mission_id,
-        ["rmp", "timeline"],
+        ["rmp"],
         job_kind="scheduler_cycle",
         update_intent="scheduled_cycle",
     )
@@ -60,7 +55,7 @@ def run_mission_cycle(mission_id: str, retriever_k: int = 8) -> dict[str, str] |
     append_pipeline_job_event(
         job_id,
         "pipeline_started",
-        {"run_types": ["rmp", "timeline"], "source": "scheduler"},
+        {"run_types": ["rmp"], "source": "scheduler"},
     )
 
     try:
@@ -75,63 +70,32 @@ def run_mission_cycle(mission_id: str, retriever_k: int = 8) -> dict[str, str] |
         update_mission_last_ingest(mission_id)
 
         retriever_rmp = get_mission_retriever(mission_id=mission_id, report_type="rmp")
-        retriever_timeline = get_mission_retriever(mission_id=mission_id, report_type="timeline")
 
-        def do_rmp() -> tuple[str, str]:
-            t0 = time.monotonic()
-            content, sources = run_template_rag_agent(
-                mission_id=mission_id,
-                template_query=RMP_TEMPLATE_QUERY,
-                generation_prompt_template=RMP_GENERATION_PROMPT,
-                retriever=retriever_rmp,
-                base_url=get_ollama_base_url_for_report("rmp"),
-            )
-            set_pending(mission_id, "rmp", content, sources=sources)
-            append_pipeline_job_event(
-                job_id,
-                "report_completed",
-                {
-                    "report_type": "rmp",
-                    "kind": "scheduler_pending",
-                    "ms": round((time.monotonic() - t0) * 1000),
-                },
-            )
-            return "rmp", content
-
-        def do_timeline() -> tuple[str, str]:
-            t0 = time.monotonic()
-            content, sources = run_template_rag_agent(
-                mission_id=mission_id,
-                template_query=TIMELINE_TEMPLATE_QUERY,
-                generation_prompt_template=TIMELINE_GENERATION_PROMPT,
-                retriever=retriever_timeline,
-                base_url=get_ollama_base_url_for_report("timeline"),
-            )
-            set_pending(mission_id, "timeline", content, sources=sources)
-            append_pipeline_job_event(
-                job_id,
-                "report_completed",
-                {
-                    "report_type": "timeline",
-                    "kind": "scheduler_pending",
-                    "ms": round((time.monotonic() - t0) * 1000),
-                },
-            )
-            return "timeline", content
-
-        results: dict[str, str] = {}
-        with ThreadPoolExecutor(max_workers=2) as executor:
-            futures = [executor.submit(do_rmp), executor.submit(do_timeline)]
-            for f in as_completed(futures):
-                name, content = f.result()
-                results[name] = content
+        t0 = time.monotonic()
+        content, sources = run_template_rag_agent(
+            mission_id=mission_id,
+            template_query=RMP_TEMPLATE_QUERY,
+            generation_prompt_template=RMP_GENERATION_PROMPT,
+            retriever=retriever_rmp,
+            base_url=get_ollama_base_url_for_report("rmp"),
+        )
+        set_pending(mission_id, "rmp", content, sources=sources)
+        append_pipeline_job_event(
+            job_id,
+            "report_completed",
+            {
+                "report_type": "rmp",
+                "kind": "scheduler_pending",
+                "ms": round((time.monotonic() - t0) * 1000),
+            },
+        )
 
         update_mission_last_generated(mission_id)
         append_pipeline_job_event(
-            job_id, "pipeline_completed", {"run_types": ["rmp", "timeline"]}
+            job_id, "pipeline_completed", {"run_types": ["rmp"]}
         )
         complete_pipeline_job(job_id)
-        return results
+        return {"rmp": content}
     except Exception as e:
         fail_pipeline_job(job_id, str(e), failure_kind="pipeline_error")
         raise

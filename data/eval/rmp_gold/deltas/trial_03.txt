@@ -1,0 +1,2 @@
+Finding 8: Backup job for domain controller DC-01 failed for 14 consecutive days. Risk: High. Recommendation: Investigate backup failures and verify restore procedures quarterly.
+Finding 9: Service account SVC-BACKUP has excessive domain admin privileges. Risk: Critical. Recommendation: Apply least-privilege and rotate credentials.

@@ -1,5 +1,5 @@
 /**
- * Mission RAG – Liquid Glass UI
+ * CyberScribe – Liquid Glass UI
  * Phase 2: bundled with Vite; Tiptap report editor (`tiptap-editor.ts`).
  */
 
@@ -911,7 +911,11 @@ function renderMissionList(
               div.querySelector("[data-action=reset]")!.addEventListener("click", () => {
                 div.remove();
                 document.removeEventListener("click", closeMenu);
-                const confirmed = window.confirm("Are you sure you want to reset the draft?");
+                const confirmed = window.confirm(
+                  "Reset this document to the skeleton template?\n\n" +
+                    "All draft text, pending AI suggestions, and incremental update tracking for this report will be cleared. " +
+                    "Review status returns to Draft.\n\nThis cannot be undone."
+                );
                 if (confirmed) {
                   post("/missions/" + m.id + "/reports/" + reportType + "/reset")
                     .then(() => {
@@ -964,9 +968,9 @@ function renderLoginPage(main: HTMLElement): void {
     <div class="login-page-card glass-strong">
       <header class="login-brand">
         <div class="login-logo">
-          <img src="/logo.png" width="144" height="144" alt="Mission RAG" class="login-logo-img" decoding="async" />
+          <img src="/logo.png" width="144" height="144" alt="CyberScribe" class="login-logo-img" decoding="async" />
         </div>
-        <h1 class="login-brand-title">Mission Document Collaboration Platform</h1>
+        <h1 class="login-brand-title">CyberScribe</h1>
         <p class="login-brand-tagline">Mission-scoped drafting, grounded AI, human-reviewed output</p>
       </header>
 
@@ -2219,7 +2223,7 @@ function renderReportView(missionId: string, reportType: ReportType, main: HTMLE
     statusSpan.style.marginLeft = "0.5rem";
     const doSave = (): void => {
       if (contentLocked) return;
-      const editor = getReportEditor("quill-report");
+      const editor = getReportEditor("report-editor");
       if (editor?.hasPendingAssist()) {
         statusSpan.textContent = "Accept or reject the inline AI suggestion in the document before saving.";
         return;
@@ -2242,7 +2246,7 @@ function renderReportView(missionId: string, reportType: ReportType, main: HTMLE
     draftEl.appendChild(actions);
     const assistOpt =
       aiLocked ? undefined : { run: makeInlineAssistRunner(missionId, reportType) };
-    const mounted = createReportEditor("quill-report", editorContainer, current, doSave, {
+    const mounted = createReportEditor("report-editor", editorContainer, current, doSave, {
       inlineAssist: assistOpt,
       documentComments: contentLocked
         ? undefined
@@ -2490,6 +2494,7 @@ function renderReportView(missionId: string, reportType: ReportType, main: HTMLE
             ` : ""}
             <button type="button" class="btn btn-sm report-approval-log-pill" id="btn-approval-log-toggle" aria-expanded="false" aria-controls="report-approval-log-panel">Approval log</button>
             <button type="button" class="btn btn-sm" id="btn-export-pdf" title="Export current HTML to PDF">Export PDF</button>
+            <button type="button" class="btn btn-sm btn-danger" id="btn-reset-report" title="Restore the skeleton template with placeholders" ${contentLocked ? "disabled" : ""}>Reset to template</button>
           </div>
           <div id="report-status-confirm" class="report-status-confirm" style="display: none; margin-top: 0.75rem; padding-top: 0.75rem; border-top: 1px solid var(--glass-border, rgba(255,255,255,0.12));">
             <div style="display: flex; flex-wrap: wrap; gap: 0.75rem; align-items: flex-start;">
@@ -2638,7 +2643,7 @@ function renderReportView(missionId: string, reportType: ReportType, main: HTMLE
     function layoutCommentGutterCards(): void {
       const scrollEl = document.getElementById("report-doc-scroll");
       const inner = document.getElementById("report-comment-gutter-inner");
-      const editor = getReportEditor("quill-report")?.getEditor() ?? null;
+      const editor = getReportEditor("report-editor")?.getEditor() ?? null;
       if (!scrollEl || !inner) return;
       inner.style.minHeight = `${Math.max(scrollEl.offsetHeight, scrollEl.scrollHeight, 400)}px`;
       if (!editor) return;
@@ -2716,7 +2721,7 @@ function renderReportView(missionId: string, reportType: ReportType, main: HTMLE
           const rows = data.comments || [];
           if (!rows.length) {
             inner.innerHTML = "";
-            const ed0 = getReportEditor("quill-report")?.getEditor() ?? null;
+            const ed0 = getReportEditor("report-editor")?.getEditor() ?? null;
             if (ed0) applyCommentHighlights(ed0, []);
             scheduleReportCommentLayout();
             syncCommentComposerVisibility();
@@ -2832,7 +2837,7 @@ function renderReportView(missionId: string, reportType: ReportType, main: HTMLE
             inner.appendChild(card);
           }
 
-          const ed = getReportEditor("quill-report")?.getEditor() ?? null;
+          const ed = getReportEditor("report-editor")?.getEditor() ?? null;
           if (ed) {
             applyCommentHighlights(
               ed,
@@ -2905,7 +2910,7 @@ function renderReportView(missionId: string, reportType: ReportType, main: HTMLE
       const ta = document.getElementById("report-comment-composer-body") as HTMLTextAreaElement | null;
       const body = ta?.value?.trim() ?? "";
       if (!body) return;
-      const editor = getReportEditor("quill-report")?.getEditor() ?? null;
+      const editor = getReportEditor("report-editor")?.getEditor() ?? null;
       const parent_id = commentReplyParentId?.trim() || undefined;
       let anchor_json: CommentAnchorJson | undefined;
       let anchor_section_key: string | undefined;
@@ -3001,6 +3006,26 @@ function renderReportView(missionId: string, reportType: ReportType, main: HTMLE
         .catch((e: unknown) => alert(e instanceof Error ? e.message : "PDF export failed"));
     });
 
+    document.getElementById("btn-reset-report")?.addEventListener("click", () => {
+      if (contentLocked) return;
+      const confirmed = window.confirm(
+        "Reset this document to the skeleton template?\n\n" +
+          "All draft text, pending AI suggestions, and incremental update tracking for this report will be cleared. " +
+          "Review status returns to Draft.\n\nThis cannot be undone."
+      );
+      if (!confirmed) return;
+      const resetBtn = document.getElementById("btn-reset-report") as HTMLButtonElement | null;
+      if (resetBtn) resetBtn.disabled = true;
+      post("/missions/" + missionId + "/reports/" + reportType + "/reset")
+        .then(() => {
+          if (hashMatchesReport(missionId, reportType)) render();
+        })
+        .catch((err: Error) => alert(err?.message ?? "Failed to reset draft"))
+        .finally(() => {
+          if (resetBtn && !contentLocked) resetBtn.disabled = false;
+        });
+    });
+
     document.getElementById("btn-rr-chat-send")?.addEventListener("click", () => {
       const ta = document.getElementById("rr-chat-input") as HTMLTextAreaElement | null;
       const msg = ta?.value?.trim() ?? "";
@@ -3020,16 +3045,16 @@ function renderReportView(missionId: string, reportType: ReportType, main: HTMLE
     if (hasAnyEdits) {
       streamEl.style.display = "none";
       renderDraftArea(report, contentLocked, aiLocked);
-      const q0 = getReportEditor("quill-report");
+      const q0 = getReportEditor("report-editor");
       if (q0) q0.setContent("<p><em>Loading proposed changes…</em></p>");
       get<{ preview_html: string }>("/missions/" + missionId + "/reports/" + reportType + "/preview")
         .then((data) => {
-          const q = getReportEditor("quill-report");
+          const q = getReportEditor("report-editor");
           const html = data.preview_html != null ? String(data.preview_html) : "";
           if (q) q.setContent(html || "<p><br></p>");
         })
         .catch(() => {
-          const q = getReportEditor("quill-report");
+          const q = getReportEditor("report-editor");
           if (q) q.setContent((report.current_content ?? "") || "<p><br></p>");
         });
       const accAll = document.getElementById("btn-accept-all-edits") as HTMLButtonElement | null;
@@ -3143,7 +3168,7 @@ function renderReportView(missionId: string, reportType: ReportType, main: HTMLE
       closeStream = connectStream(missionId, reportType, hiddenStream, undefined, (content) => {
         const merged = mergeLlmIntoDraft(initialTemplate, content);
         const html = mergedToDisplayHtml(merged);
-        getReportEditor("quill-report")?.setContent(html);
+        getReportEditor("report-editor")?.setContent(html);
       });
     } else if (hasPending) {
       streamEl.style.display = "none";
@@ -3317,7 +3342,7 @@ function renderReportView(missionId: string, reportType: ReportType, main: HTMLE
       closeStream = connectStream(missionId, reportType, hiddenStream, undefined, (content) => {
         const merged = mergeLlmIntoDraft(initialTemplate, content);
         const html = mergedToDisplayHtml(merged);
-        getReportEditor("quill-report")?.setContent(html);
+        getReportEditor("report-editor")?.setContent(html);
       });
       const updateBody =
         fullRefreshEl?.checked === true ? { update_intent: "full_refresh" } : {};
@@ -3528,7 +3553,7 @@ function renderDocumentsView(missionId: string, main: HTMLElement): void {
     statusSpan.style.marginLeft = "0.5rem";
     const doSave = (): void => {
       if (docContentLocked) return;
-      const editor = getReportEditor("quill-" + type);
+      const editor = getReportEditor("report-editor-" + type);
       if (editor?.hasPendingAssist()) {
         statusSpan.textContent = "Accept or reject the inline AI suggestion in the document before saving.";
         return;
@@ -3547,7 +3572,7 @@ function renderDocumentsView(missionId: string, main: HTMLElement): void {
     actions.appendChild(statusSpan);
     draftEl.appendChild(actions);
     const docAssist = docAiLocked ? undefined : { run: makeInlineAssistRunner(missionId, type) };
-    const mounted = createReportEditor("quill-" + type, editorContainer, current, doSave, {
+    const mounted = createReportEditor("report-editor-" + type, editorContainer, current, doSave, {
       inlineAssist: docAssist,
     });
     if (!mounted) {
@@ -3716,12 +3741,12 @@ function renderDocumentsView(missionId: string, main: HTMLElement): void {
       closeRmp = connectStream(missionId, "rmp", hiddenRmp, undefined, (content) => {
         const merged = mergeLlmIntoDraft(initialRmp, content);
         const html = mergedToDisplayHtml(merged);
-        getReportEditor("quill-rmp")?.setContent(html);
+        getReportEditor("report-editor-rmp")?.setContent(html);
       });
       closeTimeline = connectStream(missionId, "timeline", hiddenTimeline, undefined, (content) => {
         const merged = mergeLlmIntoDraft(initialTimeline, content);
         const html = mergedToDisplayHtml(merged);
-        getReportEditor("quill-timeline")?.setContent(html);
+        getReportEditor("report-editor-timeline")?.setContent(html);
       });
     } else {
       if (rmpPending) {
@@ -3863,12 +3888,12 @@ function renderDocumentsView(missionId: string, main: HTMLElement): void {
       closeRmp = connectStream(missionId, "rmp", hiddenRmp, undefined, (content) => {
         const merged = mergeLlmIntoDraft(initialRmp, content);
         const html = mergedToDisplayHtml(merged);
-        getReportEditor("quill-rmp")?.setContent(html);
+        getReportEditor("report-editor-rmp")?.setContent(html);
       });
       closeTimeline = connectStream(missionId, "timeline", hiddenTimeline, undefined, (content) => {
         const merged = mergeLlmIntoDraft(initialTimeline, content);
         const html = mergedToDisplayHtml(merged);
-        getReportEditor("quill-timeline")?.setContent(html);
+        getReportEditor("report-editor-timeline")?.setContent(html);
       });
       const runBody: { mission_id: string; update_intent?: string } = { mission_id: missionId };
       if (fullRefreshEl?.checked === true) {

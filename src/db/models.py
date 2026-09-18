@@ -5,7 +5,6 @@ Enables long-running (e.g. 5-month) workflows with accept/reject and user edits.
 import sqlite3
 import re
 import uuid
-from pathlib import Path
 from datetime import datetime
 from contextlib import contextmanager
 from typing import Iterator

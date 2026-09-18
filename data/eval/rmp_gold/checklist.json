@@ -1,0 +1,20 @@
+{
+  "mission": "sample_mission",
+  "items": [
+    {
+      "id": "finding_1",
+      "label": "Firewall allows RDP from 0.0.0.0/0 to internal hosts",
+      "keywords": ["rdp", "firewall", "0.0.0.0", "internal"]
+    },
+    {
+      "id": "finding_2",
+      "label": "Weak password policy; MFA recommendation",
+      "keywords": ["password", "complexity", "mfa", "nist"]
+    },
+    {
+      "id": "finding_3",
+      "label": "Unpatched server SRV-01; patch management needed",
+      "keywords": ["patch", "srv-01", "windows update", "critical"]
+    }
+  ]
+}

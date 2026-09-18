@@ -108,21 +108,6 @@ def get_user_by_login_id(login_id: str) -> Optional[dict[str, Any]]:
     return user_row_to_public(dict(row)) if row else None
 
 
-def get_user_by_email(email: str) -> Optional[dict[str, Any]]:
-    """Deprecated alias for roster code paths; same as get_user_by_login_id."""
-    return get_user_by_login_id(email)
-
-
-def get_user_by_id(user_id: str) -> Optional[dict[str, Any]]:
-    init_db()
-    with get_connection() as conn:
-        row = conn.execute(
-            "SELECT id, email, display_name, is_admin, created_at FROM users WHERE id = ?",
-            (user_id,),
-        ).fetchone()
-    return user_row_to_public(dict(row)) if row else None
-
-
 def verify_login(username: str, password: str) -> Optional[dict[str, Any]]:
     try:
         login_norm = normalize_login_id(username)

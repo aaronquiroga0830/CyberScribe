@@ -1,5 +1,7 @@
 # Agentic RAG MVP — exhaustive project summary
 
+> Historical architecture snapshot. For current setup and supported dependencies, see [README.md](../README.md); the former Quill/tsc frontend and alternate streaming server have been retired.
+
 > **Superseded as the read-first doc:** Use [PROJECT_MASTER.md](PROJECT_MASTER.md) for the full picture (motivation, product, technical, roadmap). This file remains for focused reference.
 
 **Purpose:** Single in-depth reference for humans and LLMs. For day-to-day conventions and file roles, [PROJECT_CONTEXT.md](PROJECT_CONTEXT.md) remains the maintained source of truth; this document expands architecture, dual pipelines, APIs, and implementation detail in one place.

@@ -33,6 +33,7 @@ export type AssistPayload = {
   pendingTo: number;
   replaceFrom: number | null;
   replaceTo: number | null;
+  originalText: string | null;
   evidence: string[];
 };
 
@@ -194,7 +195,8 @@ function createAssistPlugin(editor: Editor): Plugin<AssistPluginState> {
           return { deco: DecorationSet.empty, payload: null };
         }
         const map = tr.mapping;
-        let { pendingFrom, pendingTo, replaceFrom, replaceTo, evidence, kind } = value.payload;
+        let { pendingFrom, pendingTo, replaceFrom, replaceTo } = value.payload;
+        const { kind, evidence } = value.payload;
         pendingFrom = map.map(pendingFrom);
         pendingTo = map.map(pendingTo);
         if (replaceFrom != null && replaceTo != null) {
@@ -213,6 +215,7 @@ function createAssistPlugin(editor: Editor): Plugin<AssistPluginState> {
           pendingTo,
           replaceFrom,
           replaceTo,
+          originalText: value.payload.originalText,
           evidence,
         };
         const dec = DecorationSet.create(newState.doc, [
@@ -265,13 +268,16 @@ export const InlineAssistPending = Extension.create({
           if (size <= 0) return false;
 
           let tr = state.tr;
-          const insertPos = kind === "replace" && replaceFrom != null && replaceTo != null ? replaceTo : state.selection.from;
+          let insertPos =
+            kind === "replace" && replaceFrom != null && replaceTo != null
+              ? replaceFrom
+              : state.selection.from;
+          let originalText: string | null = null;
 
           if (kind === "replace" && replaceFrom != null && replaceTo != null) {
-            const src = state.schema.marks.assistReplaceSource;
-            if (src) {
-              tr = tr.addMark(replaceFrom, replaceTo, src.create());
-            }
+            originalText = state.doc.textBetween(replaceFrom, replaceTo, "\n");
+            tr = tr.delete(replaceFrom, replaceTo);
+            insertPos = replaceFrom;
           }
 
           tr = tr.replace(insertPos, insertPos, slice);
@@ -297,6 +303,7 @@ export const InlineAssistPending = Extension.create({
             pendingTo,
             replaceFrom: kind === "replace" ? replaceFrom : null,
             replaceTo: kind === "replace" ? replaceTo : null,
+            originalText: kind === "replace" ? originalText : null,
             evidence,
           };
           tr = tr.setMeta(assistPendingPluginKey, { type: "set", payload } satisfies SetMeta);
@@ -315,12 +322,22 @@ export const InlineAssistPending = Extension.create({
 
           let tr = state.tr;
           const markSrc = state.schema.marks.assistReplaceSource;
-          const { pendingFrom, pendingTo, replaceFrom, replaceTo, kind } = payload;
+          const { pendingFrom, pendingTo, replaceFrom, replaceTo, kind, originalText } = payload;
 
           if (pendingFrom < pendingTo) {
             tr = tr.delete(pendingFrom, pendingTo);
           }
-          if (kind === "replace" && replaceFrom != null && replaceTo != null && markSrc) {
+          if (
+            kind === "replace" &&
+            originalText != null &&
+            replaceFrom != null &&
+            originalText.length > 0
+          ) {
+            const wrap = document.createElement("div");
+            wrap.textContent = originalText;
+            const slice = PMDOMParser.fromSchema(state.schema).parseSlice(wrap);
+            tr = tr.insert(replaceFrom, slice.content);
+          } else if (kind === "replace" && replaceFrom != null && replaceTo != null && markSrc) {
             tr = tr.removeMark(replaceFrom, replaceTo, markSrc);
           }
           appendClearMeta(tr);
@@ -339,12 +356,10 @@ export const InlineAssistPending = Extension.create({
           if (!markPending) return false;
 
           let tr = state.tr;
-          const { pendingFrom, pendingTo, replaceFrom, replaceTo, kind } = payload;
+          const { pendingFrom, pendingTo, kind } = payload;
 
-          if (kind === "replace" && replaceFrom != null && replaceTo != null) {
-            const len = pendingTo - pendingFrom;
-            tr = tr.delete(replaceFrom, replaceTo);
-            tr = tr.removeMark(replaceFrom, replaceFrom + len, markPending);
+          if (kind === "replace") {
+            tr = tr.removeMark(pendingFrom, pendingTo, markPending);
           } else {
             tr = tr.removeMark(pendingFrom, pendingTo, markPending);
           }

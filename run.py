@@ -16,7 +16,7 @@ from src.agents.report_agents import run_all_report_agents
 
 
 def main():
-    parser = argparse.ArgumentParser(description="Agentic RAG MVP: index + generate reports")
+    parser = argparse.ArgumentParser(description="CyberScribe: index + generate reports")
     sub = parser.add_subparsers(dest="command", required=True)
 
     # build: ingest mission dir -> vector index

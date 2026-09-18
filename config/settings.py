@@ -11,9 +11,12 @@ PROJECT_ROOT = Path(__file__).resolve().parent.parent
 # Ollama
 # For parallel RMP + Timeline generation: set OLLAMA_NUM_PARALLEL=2 (or higher) in the
 # environment *before starting* the Ollama server (e.g. Windows: System env vars, then restart Ollama).
-# See README "Parallel generation" section.
+# See README "Configuration" section.
 OLLAMA_BASE_URL = os.getenv("OLLAMA_BASE_URL", "http://localhost:11434")
-OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "phi3")
+OLLAMA_MODEL = os.getenv("OLLAMA_MODEL", "gemma2:2b")
+# Max seconds for a single generate call (structured edit or RAG draft). Unset = no limit.
+_ollama_gen_to = os.getenv("OLLAMA_GENERATE_TIMEOUT_S", "").strip()
+OLLAMA_GENERATE_TIMEOUT_S: float | None = float(_ollama_gen_to) if _ollama_gen_to else None
 # Optional: use a second Ollama instance for true parallel (e.g. OLLAMA_BASE_URL_TIMELINE=http://localhost:11435)
 OLLAMA_BASE_URL_RMP = os.getenv("OLLAMA_BASE_URL_RMP", "").strip() or None
 OLLAMA_BASE_URL_TIMELINE = os.getenv("OLLAMA_BASE_URL_TIMELINE", "").strip() or None

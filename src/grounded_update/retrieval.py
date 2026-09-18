@@ -51,6 +51,9 @@ def gather_inline_assist_documents(
     after_cursor: str,
     k: int = 4,
     max_chunks: int = 14,
+    section_key: str | None = None,
+    action: str = "",
+    retrieval_query_override: str | None = None,
 ) -> list[Any]:
     """
     Run primary + auxiliary retriever queries and return de-duplicated documents (order preserved).
@@ -60,7 +63,15 @@ def gather_inline_assist_documents(
         return []
 
     queries: list[str] = []
-    primary = (selection.strip() or before_cursor.strip() or "mission report context")[:800]
+    if retrieval_query_override and retrieval_query_override.strip():
+        primary = retrieval_query_override.strip()[:800]
+    else:
+        primary = (selection.strip() or before_cursor.strip() or "mission report context")[:800]
+        if action == "fill_placeholder" and section_key:
+            from src.templates.inline_assist_prompts import _section_display_title
+
+            title = _section_display_title(report_type, section_key) or section_key
+            primary = f"{title} mission evidence crew logs findings risks summary"
     queries.append(primary)
     queries.extend(_neighbor_queries(before_cursor, after_cursor))
     pq = _placeholder_query(before_cursor, after_cursor, selection)

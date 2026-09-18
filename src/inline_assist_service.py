@@ -8,13 +8,26 @@ from __future__ import annotations
 import logging
 import re
 from typing import Any
-
 from langchain_community.chat_models import ChatOllama
 from langchain_core.output_parsers import StrOutputParser
 from langchain_core.prompts import ChatPromptTemplate
 
 from config.settings import OLLAMA_MODEL, get_ollama_base_url_for_report
 from src.grounded_update.draft_dedupe import analyze_suggestion_against_draft
+from src.grounded_update.evidence_attribution import filter_supporting_docs
+from src.grounded_update.fill_placeholder import (
+    build_fill_placeholder_retry_suffix,
+    looks_like_outline_suggestion,
+    looks_like_raw_log_dump,
+    synthesize_fill_from_evidence,
+)
+from src.grounded_update.findings_gap import (
+    FindingContinuation,
+    build_findings_continuation_prompt,
+    build_findings_retrieval_query,
+    filter_docs_for_findings_gap,
+    validate_finding_suggestion,
+)
 from src.grounded_update.gap_spec import (
     SlotKind,
     augment_standard_prompt,
@@ -62,9 +75,9 @@ def _unique_sources(docs: list[Any]) -> list[str]:
     return out[:8]
 
 
-def _invoke_assist_llm(prompt_text: str, report_type: str) -> str:
+def _invoke_assist_llm(prompt_text: str, report_type: str, *, temperature: float = 0.3) -> str:
     base_url = get_ollama_base_url_for_report(report_type)
-    llm = ChatOllama(base_url=base_url, model=OLLAMA_MODEL, temperature=0.3)
+    llm = ChatOllama(base_url=base_url, model=OLLAMA_MODEL, temperature=temperature)
     chain = ChatPromptTemplate.from_messages([("human", prompt_text)]) | llm | StrOutputParser()
     return chain.invoke({})
 
@@ -77,6 +90,7 @@ def run_inline_assist(
     before_cursor: str = "",
     after_cursor: str = "",
     current_draft_html: str | None = None,
+    section_key: str | None = None,
 ) -> dict[str, Any]:
     if action not in INLINE_ASSIST_ACTIONS:
         raise ValueError(f"Invalid action; use one of: {sorted(INLINE_ASSIST_ACTIONS)}")
@@ -136,6 +150,76 @@ def run_inline_assist(
             val_warn,
         )
 
+    if gap and gap.slot_kind == SlotKind.FINDING_ROW:
+        next_num = int(gap.constraints["next_num"])
+        target_risk = str(gap.constraints["target_risk"])
+        existing = tuple(gap.constraints["existing_findings"])
+        cont = FindingContinuation(
+            next_num=next_num,
+            target_risk=target_risk,
+            last_line=str(gap.constraints["last_line"]),
+            existing_findings=existing,
+        )
+        sk = section_key or "findings"
+        docs_findings = gather_inline_assist_documents(
+            mission_id,
+            rt,
+            selection=sel,
+            before_cursor=before,
+            after_cursor=after,
+            k=6,
+            max_chunks=16,
+            section_key=sk,
+            action=action,
+            retrieval_query_override=build_findings_retrieval_query(next_num, target_risk),
+        )
+        filtered = filter_docs_for_findings_gap(docs_findings, existing)
+        raw_ev = "\n\n---\n\n".join(getattr(d, "page_content", str(d)) for d in filtered)
+        evidence = clean_context_for_llm(raw_ev) if raw_ev else ""
+        sources = _unique_sources(filtered)
+        evidence_chunks = assign_chunk_ids(filtered)
+        prompt_text = build_findings_continuation_prompt(action, cont, evidence)
+        try:
+            raw_out = _invoke_assist_llm(prompt_text, report_type, temperature=0.1)
+        except Exception as e:
+            logger.exception("inline assist LLM failed (findings gap path)")
+            raise RuntimeError(str(e)) from e
+        suggestion, val_warn = validate_finding_suggestion(
+            _strip_fences(raw_out or ""),
+            next_num=next_num,
+            target_risk=target_risk,
+            existing_findings=existing,
+        )
+        if not suggestion:
+            retry_prompt = (
+                prompt_text
+                + f"\n\n---\n\nYour previous answer was invalid. Output ONLY this pattern:\n"
+                f"Finding {next_num}: <new fact from evidence> (Risk: {target_risk})."
+            )
+            try:
+                raw_retry = _invoke_assist_llm(retry_prompt, report_type, temperature=0.1)
+            except Exception:
+                raw_retry = ""
+            suggestion, val_warn = validate_finding_suggestion(
+                _strip_fences(raw_retry or ""),
+                next_num=next_num,
+                target_risk=target_risk,
+                existing_findings=existing,
+            )
+        if suggestion:
+            attributed_docs = filter_supporting_docs(suggestion, filtered)
+            dup_warn = analyze_suggestion_against_draft(suggestion, draft_html)
+            return {
+                "suggestion": suggestion,
+                "evidence_sources": _unique_sources(attributed_docs) or sources,
+                "evidence_chunks": assign_chunk_ids(attributed_docs) or evidence_chunks,
+                "grounding_warnings": val_warn + dup_warn,
+            }
+        logger.warning(
+            "Findings gap assist failed validation; falling back to standard assist: %s",
+            val_warn,
+        )
+
     docs: list[Any] = gather_inline_assist_documents(
         mission_id,
         rt,
@@ -144,18 +228,23 @@ def run_inline_assist(
         after_cursor=after,
         k=6,
         max_chunks=16,
+        section_key=section_key,
+        action=action,
     )
     raw = "\n\n---\n\n".join(getattr(d, "page_content", str(d)) for d in docs)
     evidence = clean_context_for_llm(raw) if raw else ""
-    sources = _unique_sources(docs)
-    evidence_chunks = assign_chunk_ids(docs)
+    attributed_docs: list[Any] = []
+    used_evidence_fallback = False
 
     prompt_text = augment_standard_prompt(
-        build_inline_assist_prompt(action, sel, before, after, evidence),
+        build_inline_assist_prompt(
+            action, sel, before, after, evidence, report_type=rt, section_key=section_key
+        ),
         gap,
     )
     try:
-        raw_out = _invoke_assist_llm(prompt_text, report_type)
+        llm_temp = 0.1 if action == "fill_placeholder" else 0.3
+        raw_out = _invoke_assist_llm(prompt_text, report_type, temperature=llm_temp)
     except Exception as e:
         logger.exception("inline assist LLM failed")
         raise RuntimeError(str(e)) from e
@@ -164,7 +253,76 @@ def run_inline_assist(
     if not suggestion:
         raise RuntimeError("Model returned empty suggestion")
 
+    outline_reasons: list[str] = []
+    if action == "fill_placeholder":
+        if looks_like_raw_log_dump(suggestion):
+            outline_reasons = ["raw log dump instead of section prose"]
+        else:
+            outline_reasons = looks_like_outline_suggestion(
+                suggestion, report_type=rt, section_key=section_key
+            )
+        if outline_reasons:
+            retry_prompt = prompt_text + build_fill_placeholder_retry_suffix(rt, section_key)
+            try:
+                raw_retry = _invoke_assist_llm(retry_prompt, report_type, temperature=0.1)
+            except Exception:
+                raw_retry = ""
+            suggestion_retry = _strip_fences(raw_retry or "")
+            retry_reasons: list[str] = []
+            if suggestion_retry:
+                if looks_like_raw_log_dump(suggestion_retry):
+                    retry_reasons = ["raw log dump instead of section prose"]
+                else:
+                    retry_reasons = looks_like_outline_suggestion(
+                        suggestion_retry, report_type=rt, section_key=section_key
+                    )
+            else:
+                retry_reasons = ["empty retry suggestion"]
+            if suggestion_retry and not retry_reasons:
+                suggestion = suggestion_retry
+                outline_reasons = []
+            else:
+                fallback, fallback_docs = (
+                    synthesize_fill_from_evidence(
+                        evidence,
+                        report_type=rt,
+                        section_key=section_key or "",
+                        docs=docs,
+                    )
+                    if section_key
+                    else (None, [])
+                )
+                fb_reasons: list[str] = []
+                if fallback:
+                    if looks_like_raw_log_dump(fallback):
+                        fb_reasons = ["raw log dump instead of section prose"]
+                    else:
+                        fb_reasons = looks_like_outline_suggestion(
+                            fallback, report_type=rt, section_key=section_key
+                        )
+                else:
+                    fb_reasons = ["no evidence fallback"]
+                if fallback and not fb_reasons:
+                    suggestion = fallback
+                    outline_reasons = []
+                    used_evidence_fallback = True
+                    attributed_docs = fallback_docs
+                else:
+                    raise RuntimeError(
+                        "Fill placeholder could not produce section prose. "
+                        "Try Update for a full grounded draft, or edit manually."
+                    )
+
+    if not attributed_docs:
+        attributed_docs = filter_supporting_docs(suggestion, docs)
+    sources = _unique_sources(attributed_docs)
+    evidence_chunks = assign_chunk_ids(attributed_docs)
+
     grounding_warnings = analyze_suggestion_against_draft(suggestion, draft_html)
+    if used_evidence_fallback:
+        grounding_warnings = list(grounding_warnings) + [
+            "Suggestion built from evidence excerpts because the model returned a document outline."
+        ]
     if gap and gap.slot_kind == SlotKind.TIMELINE_ROW:
         grounding_warnings = (
             list(grounding_warnings)

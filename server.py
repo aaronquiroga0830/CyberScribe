@@ -1,5 +1,5 @@
 """
-FastAPI server: Mission RAG API + SSE streaming + Liquid Glass web UI.
+FastAPI server: CyberScribe API, SSE streaming, and web UI.
 Serves REST API, streaming, and static web app. Run from project root:
   uvicorn server:app --host 0.0.0.0 --port 8000
 """
@@ -7,6 +7,7 @@ import asyncio
 import io
 import json
 import logging
+import os
 import re
 import queue
 import threading
@@ -19,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 from fastapi import FastAPI, Request, HTTPException, Response
 from fastapi.middleware.cors import CORSMiddleware
-from fastapi.responses import StreamingResponse, HTMLResponse, FileResponse, JSONResponse
+from fastapi.responses import StreamingResponse, FileResponse, JSONResponse
 from starlette.middleware.base import BaseHTTPMiddleware
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
@@ -27,8 +28,8 @@ from pydantic import BaseModel
 PROJECT_ROOT = Path(__file__).resolve().parent
 WEB_DIR = PROJECT_ROOT / "web"
 WEB_DIST = WEB_DIR / "dist"
-# Vite build output (npm run build): prefer dist so bundled Tiptap + assets load correctly.
-WEB_ROOT = WEB_DIST if (WEB_DIST / "index.html").is_file() else WEB_DIR
+# The browser needs Vite's compiled bundle; raw TypeScript is not a fallback.
+WEB_ROOT = WEB_DIST
 
 import sys
 if str(PROJECT_ROOT) not in sys.path:
@@ -40,8 +41,6 @@ from src.mission_service import (
     ensure_db,
     create_mission,
     delete_mission,
-    list_missions,
-    list_missions_for_user,
     list_missions_enriched,
     list_missions_for_user_enriched,
     get_mission,
@@ -125,17 +124,16 @@ from src.pipeline_job_service import (
     create_pipeline_job,
     fail_pipeline_job,
     get_pipeline_job,
+    is_pipeline_job_cancelled,
     list_pipeline_jobs,
     mark_pipeline_job_fallback_used,
     mark_pipeline_job_running,
     resolve_update_intent_for_job,
 )
 from langchain_community.chat_models import ChatOllama
-from langchain_core.prompts import ChatPromptTemplate
-from langchain_core.output_parsers import StrOutputParser
 from config.settings import OLLAMA_MODEL
 
-app = FastAPI(title="Mission RAG")
+app = FastAPI(title="CyberScribe")
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -179,7 +177,7 @@ REPORT_SPECS = [
 
 # Draft dependencies: report_type -> list of report types it depends on (run order + content injection).
 REPORT_DEPENDENCIES: dict[str, list[str]] = {
-    "rmp": ["timeline"],
+    "rmp": [],
     "timeline": [],
     "aar": [],
     "sitrep": [],
@@ -240,6 +238,10 @@ def _run_structured_edits(
     try:
         from src.retrieve.retriever import get_mission_retriever
 
+        if job_id and is_pipeline_job_cancelled(mission_id, job_id):
+            shared_q.put(("error", report_type, "cancelled"))
+            return
+
         spec = STRUCTURED_EDIT_SPECS.get(report_type)
         if not spec:
             shared_q.put(("error", report_type, f"Unknown report type: {report_type}"))
@@ -293,6 +295,10 @@ def _run_structured_edits(
                 },
             )
 
+        if job_id and is_pipeline_job_cancelled(mission_id, job_id):
+            shared_q.put(("error", report_type, "cancelled"))
+            return
+
         dirty_for_sections: list = []
         if mission_row and mission_row.get("source_path"):
             try:
@@ -328,11 +334,20 @@ def _run_structured_edits(
         grounding_block = STRUCTURED_EDIT_GROUNDING_PREFIX.strip()
         if gap_hints:
             grounding_block = grounding_block + "\n\n" + gap_hints
-        prompt_text = grounding_block + "\n\n" + edit_prompt.format(
-            current_document=current_html or "<p>Empty document.</p>",
-            block_ids=block_ids_str,
-            context_note=context_note,
-            context=context or "(No source material)",
+        from src.structured_edits_json import fill_old_html_from_blocks, parse_edits_payload
+        from src.templates.prompts import STRUCTURED_EDIT_JSON_SUFFIX
+
+        prompt_text = (
+            grounding_block
+            + "\n\n"
+            + edit_prompt.format(
+                current_document=current_html or "<p>Empty document.</p>",
+                block_ids=block_ids_str,
+                context_note=context_note,
+                context=context or "(No source material)",
+            )
+            + "\n\n"
+            + STRUCTURED_EDIT_JSON_SUFFIX.strip()
         )
         if job_id:
             append_pipeline_job_event(
@@ -343,10 +358,91 @@ def _run_structured_edits(
                     "ms": round((time.monotonic() - t_prompt0) * 1000),
                 },
             )
-        llm = ChatOllama(base_url=base_url, model=OLLAMA_MODEL, temperature=0.2)
-        chain = ChatPromptTemplate.from_messages([("human", prompt_text)]) | llm | StrOutputParser()
+
+        def _edits_from_raw(raw: str) -> tuple[list[dict], bool, int]:
+            """Build validated edits from LLM text; returns (edits, parse_failed, invalid_target_count)."""
+            edits_raw, parse_failed = parse_edits_payload(raw)
+            edits_raw = fill_old_html_from_blocks(edits_raw, blocks)
+            valid_ids = set(block_ids)
+            built: list[dict] = []
+            invalid = 0
+            for i, e in enumerate(edits_raw):
+                if not isinstance(e, dict):
+                    continue
+                tid = e.get("target_block_id")
+                if tid and tid not in valid_ids:
+                    invalid += 1
+                    continue
+                built.append(
+                    {
+                        "edit_id": e.get("edit_id") or str(uuid.uuid4())[:8],
+                        "section_id": e.get("section_id"),
+                        "target_block_id": tid or block_ids[-1] if block_ids else "section_0_block_0",
+                        "operation": (e.get("operation") or "replace").lower(),
+                        "reason": e.get("reason"),
+                        "evidence_refs": e.get("evidence") or e.get("evidence_refs") or [],
+                        "old_html": e.get("old_html"),
+                        "new_html": e.get("new_html"),
+                        "status": "pending",
+                        "ord": i,
+                    }
+                )
+            return built, parse_failed, invalid
+
+        def _invoke_structured_llm(use_json_format: bool) -> str:
+            llm_kw: dict[str, Any] = {
+                "base_url": base_url,
+                "model": OLLAMA_MODEL,
+                "temperature": 0.1 if use_json_format else 0.2,
+            }
+            if use_json_format:
+                llm_kw["format"] = "json"
+            from langchain_core.messages import HumanMessage
+
+            llm = ChatOllama(**llm_kw)
+
+            from src.utils.llm_invoke import ollama_generate_timeout_s, run_with_timeout
+
+            def _invoke_llm() -> str:
+                msg = llm.invoke([HumanMessage(content=prompt_text)])
+                return (getattr(msg, "content", None) or "").strip()
+
+            limit = ollama_generate_timeout_s()
+            if limit and limit > 0:
+                out = run_with_timeout(_invoke_llm, limit)
+            else:
+                out = _invoke_llm()
+            return out
+
         t_gen_start = time.monotonic()
-        response = chain.invoke({})
+        gen_timed_out = False
+        parse_failed = False
+        invalid_target_count = 0
+        edits: list[dict] = []
+        try:
+            if job_id and is_pipeline_job_cancelled(mission_id, job_id):
+                shared_q.put(("error", report_type, "cancelled"))
+                return
+            raw = _invoke_structured_llm(use_json_format=True)
+        except TimeoutError as te:
+            gen_timed_out = True
+            raw = ""
+            logger.warning(
+                "Structured edits generation timed out mission_id=%s report_type=%s: %s",
+                mission_id,
+                report_type,
+                te,
+            )
+            if job_id:
+                append_pipeline_job_event(
+                    job_id,
+                    "generation_timeout",
+                    {
+                        "report_type": report_type,
+                        "phase": "structured_edits",
+                        "detail": str(te)[:500],
+                    },
+                )
         if job_id:
             append_pipeline_job_event(
                 job_id,
@@ -355,54 +451,35 @@ def _run_structured_edits(
                     "report_type": report_type,
                     "phase": "structured_edits",
                     "ms": round((time.monotonic() - t_gen_start) * 1000),
+                    "timed_out": gen_timed_out,
+                    "json_format": True,
                 },
             )
-        raw = (response or "").strip()
-        if raw.startswith("```"):
-            raw = re.sub(r"^```(?:json)?\s*", "", raw)
-            raw = re.sub(r"\s*```\s*$", "", raw)
         t_parse0 = time.monotonic()
-        parse_failed = False
-        if not raw:
-            edits_raw = []
-        else:
-            try:
-                edits_raw = json.loads(raw)
-            except json.JSONDecodeError as e:
-                parse_failed = True
-                logger.warning("Structured edits LLM returned invalid JSON mission_id=%s report_type=%s: %s", mission_id, report_type, e)
-                if job_id:
-                    append_pipeline_job_event(
-                        job_id,
-                        "structured_edits_parse_failed",
-                        {"report_type": report_type, "detail": str(e)[:500]},
-                    )
-                edits_raw = []
-        if not isinstance(edits_raw, list):
-            edits_raw = [edits_raw]
-        valid_ids = set(block_ids)
-        edits: list[dict] = []
-        invalid_target_count = 0
-        for i, e in enumerate(edits_raw):
-            if not isinstance(e, dict):
-                continue
-            tid = e.get("target_block_id")
-            if tid and tid not in valid_ids:
-                invalid_target_count += 1
-                continue
-            edit_id = e.get("edit_id") or str(uuid.uuid4())[:8]
-            edits.append({
-                "edit_id": edit_id,
-                "section_id": e.get("section_id"),
-                "target_block_id": tid or block_ids[-1] if block_ids else "section_0_block_0",
-                "operation": (e.get("operation") or "replace").lower(),
-                "reason": e.get("reason"),
-                "evidence_refs": e.get("evidence") or e.get("evidence_refs") or [],
-                "old_html": e.get("old_html"),
-                "new_html": e.get("new_html"),
-                "status": "pending",
-                "ord": i,
-            })
+        if not gen_timed_out:
+            edits, parse_failed, invalid_target_count = _edits_from_raw(raw or "")
+            benchmark_mode = os.environ.get("BENCHMARK_MODE") == "1"
+            if len(edits) == 0 and not gen_timed_out and not benchmark_mode:
+                try:
+                    if job_id and is_pipeline_job_cancelled(mission_id, job_id):
+                        shared_q.put(("error", report_type, "cancelled"))
+                        return
+                    if job_id:
+                        append_pipeline_job_event(
+                            job_id,
+                            "structured_edits_retry",
+                            {"report_type": report_type, "reason": "zero_edits_or_parse"},
+                        )
+                    raw_retry = _invoke_structured_llm(use_json_format=True)
+                    edits, parse_failed, invalid_target_count = _edits_from_raw(raw_retry or "")
+                except TimeoutError:
+                    pass
+        if parse_failed and job_id:
+            append_pipeline_job_event(
+                job_id,
+                "structured_edits_parse_failed",
+                {"report_type": report_type, "detail": "json_parse_failed"},
+            )
         edits, dup_suppressed = filter_near_duplicate_edits(edits)
         if job_id and dup_suppressed:
             append_pipeline_job_event(
@@ -427,46 +504,57 @@ def _run_structured_edits(
             add_pipeline_job_invalid_edits(job_id, invalid_target_count)
         # When no valid structured edits (e.g. LLM returned empty/invalid JSON), fall back to full-draft RAG so the user sees new content.
         if len(edits) == 0:
-            gen_spec = next((s for rt, *s in REPORT_SPECS if rt == report_type), None)
-            if gen_spec:
-                template_query_fb, gen_prompt = gen_spec[0], gen_spec[1]
-                if retriever is None:
-                    retriever = get_mission_retriever(mission_id=mission_id, report_type=report_type)
-                try:
-                    content, sources = run_template_rag_agent(
-                        mission_id, template_query_fb, gen_prompt, retriever=retriever, base_url=base_url
+            if job_id and is_pipeline_job_cancelled(mission_id, job_id):
+                shared_q.put(("error", report_type, "cancelled"))
+                return
+            if os.environ.get("BENCHMARK_MODE") == "1":
+                if job_id:
+                    append_pipeline_job_event(
+                        job_id,
+                        "structured_edits_fallback_skipped",
+                        {"report_type": report_type, "reason": "benchmark_mode"},
                     )
-                    merged = merge_llm_into_draft(current_html or "", content or "")
-                    if merged.strip():
-                        set_pending(mission_id, report_type, merged, sources)
-                        logger.info("Structured edits fallback: set_pending full draft mission_id=%s report_type=%s", mission_id, report_type)
-                        # paths_used for fallback = full retriever docs
-                        docs_fb = retriever.invoke(template_query_fb)
-                        paths_used = list({str(d.metadata.get("source")) for d in docs_fb if d.metadata.get("source")})
-                        # One synthetic pending edit so the UI shows the proposed-changes panel and highlighted preview.
-                        first_block = block_ids[0] if block_ids else "section_0_block_0"
-                        logger.info("Structured edits fallback: adding synthetic pending edit mission_id=%s report_type=%s", mission_id, report_type)
-                        edits = [{
-                            "edit_id": "fallback-1",
-                            "section_id": None,
-                            "target_block_id": first_block,
-                            "operation": "replace",
-                            "reason": "Full draft update",
-                            "evidence_refs": [],
-                            "old_html": current_html or "",
-                            "new_html": merged,
-                            "status": "pending",
-                            "ord": 0,
-                            "suggestion_type": "full_document_replace",
-                            **({"source_job_id": job_id} if job_id else {}),
-                        }]
-                        if job_id:
-                            mark_pipeline_job_fallback_used(job_id)
-                            append_pipeline_job_event(
-                                job_id, "structured_edits_fallback", {"report_type": report_type}
-                            )
-                except Exception as fallback_e:
-                    logger.warning("Structured edits fallback failed mission_id=%s report_type=%s: %s", mission_id, report_type, fallback_e)
+            else:
+                gen_spec = next((s for rt, *s in REPORT_SPECS if rt == report_type), None)
+                if gen_spec:
+                    template_query_fb, gen_prompt = gen_spec[0], gen_spec[1]
+                    if retriever is None:
+                        retriever = get_mission_retriever(mission_id=mission_id, report_type=report_type)
+                    try:
+                        content, sources = run_template_rag_agent(
+                            mission_id, template_query_fb, gen_prompt, retriever=retriever, base_url=base_url
+                        )
+                        merged = merge_llm_into_draft(current_html or "", content or "")
+                        if merged.strip():
+                            set_pending(mission_id, report_type, merged, sources)
+                            logger.info("Structured edits fallback: set_pending full draft mission_id=%s report_type=%s", mission_id, report_type)
+                            # paths_used for fallback = full retriever docs
+                            docs_fb = retriever.invoke(template_query_fb)
+                            paths_used = list({str(d.metadata.get("source")) for d in docs_fb if d.metadata.get("source")})
+                            # One synthetic pending edit so the UI shows the proposed-changes panel and highlighted preview.
+                            first_block = block_ids[0] if block_ids else "section_0_block_0"
+                            logger.info("Structured edits fallback: adding synthetic pending edit mission_id=%s report_type=%s", mission_id, report_type)
+                            edits = [{
+                                "edit_id": "fallback-1",
+                                "section_id": None,
+                                "target_block_id": first_block,
+                                "operation": "replace",
+                                "reason": "Full draft update",
+                                "evidence_refs": [],
+                                "old_html": current_html or "",
+                                "new_html": merged,
+                                "status": "pending",
+                                "ord": 0,
+                                "suggestion_type": "full_document_replace",
+                                **({"source_job_id": job_id} if job_id else {}),
+                            }]
+                            if job_id:
+                                mark_pipeline_job_fallback_used(job_id)
+                                append_pipeline_job_event(
+                                    job_id, "structured_edits_fallback", {"report_type": report_type}
+                                )
+                    except Exception as fallback_e:
+                        logger.warning("Structured edits fallback failed mission_id=%s report_type=%s: %s", mission_id, report_type, fallback_e)
         basename_refs = [Path(p).name for p in paths_used if p][:8]
         for e in edits:
             if not e.get("evidence_refs"):
@@ -529,6 +617,15 @@ def request_mission_update(
     source_path = Path(mission["source_path"])
     if not source_path.is_dir():
         return False, "Source path is not a directory", None
+    if os.environ.get("BENCHMARK_MODE") == "1":
+        with app.state.stream_lock:
+            busy = app.state.running_mission_id
+        if busy:
+            return (
+                False,
+                f"Pipeline already running for mission {busy} (benchmark single-flight)",
+                None,
+            )
     job_id = create_pipeline_job(mission_id, allowed_rts, update_intent=intent_opt)
     with app.state.stream_lock:
         app.state.running_mission_id = mission_id
@@ -667,6 +764,9 @@ def _run_pipeline(
                 shared_q.put(("error", report_type, str(e)))
 
         for rt in run_types:
+            if job_id and is_pipeline_job_cancelled(mission_id, job_id):
+                error_msg = "cancelled"
+                break
             if rt not in spec_map:
                 continue
             if rt in USE_STRUCTURED_EDITS_FOR:
@@ -704,10 +804,17 @@ def _run_pipeline(
         done = {rt: False for rt in run_types}
         chunk_count = {rt: 0 for rt in run_types}
         error_msg = None
+        bench_mode = os.environ.get("BENCHMARK_MODE") == "1"
+        queue_poll_s = 0.5 if bench_mode else 0.05
         while not all(done.values()) and error_msg is None:
+            if job_id and is_pipeline_job_cancelled(mission_id, job_id):
+                error_msg = "cancelled"
+                break
             try:
-                report_type, kind, data = shared_q.get(timeout=0.05)
+                report_type, kind, data = shared_q.get(timeout=queue_poll_s)
             except queue.Empty:
+                if bench_mode and job_id and is_pipeline_job_cancelled(mission_id, job_id):
+                    error_msg = "cancelled"
                 continue
             if kind == "error":
                 error_msg = f"{report_type}: {data}"
@@ -924,6 +1031,7 @@ class InlineAssistBody(BaseModel):
     before_cursor: str = ""
     after_cursor: str = ""
     current_draft_html: str | None = None
+    section_key: str | None = None
 
 
 class ReviewStatusBody(BaseModel):
@@ -1405,11 +1513,15 @@ def api_inline_assist(request: Request, mission_id: str, report_type: str, body:
             before_cursor=body.before_cursor or "",
             after_cursor=body.after_cursor or "",
             current_draft_html=body.current_draft_html,
+            section_key=body.section_key,
         )
     except ValueError as e:
         raise HTTPException(400, str(e))
     except RuntimeError as e:
         raise HTTPException(503, str(e))
+    except Exception as e:
+        logger.exception("inline assist unhandled error mission_id=%s report_type=%s", mission_id, report_type)
+        raise HTTPException(503, str(e) or "Inline assist failed")
 
 
 @app.post("/api/missions/{mission_id}/reports/{report_type}/save")
@@ -1889,6 +2001,8 @@ if WEB_DIR.is_dir():
 
     @app.get("/")
     def serve_app():
+        if not (WEB_ROOT / "index.html").is_file():
+            raise HTTPException(503, "CyberScribe's web app is not built. Run npm ci and npm run build in the project root, then restart the server.")
         return FileResponse(WEB_ROOT / "index.html")
 
     @app.get("/{path:path}")
@@ -1901,11 +2015,8 @@ if WEB_DIR.is_dir():
             f = WEB_ROOT / path
             if f.is_file():
                 return FileResponse(f)
-            if WEB_ROOT == WEB_DIR:
-                pub = WEB_DIR / "public" / path
-                if pub.is_file():
-                    return FileResponse(pub)
-        return FileResponse(WEB_ROOT / "index.html")
+            raise HTTPException(404)
+        return serve_app()
 
 
 if __name__ == "__main__":

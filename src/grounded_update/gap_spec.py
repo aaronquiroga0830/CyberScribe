@@ -7,9 +7,9 @@ from dataclasses import dataclass, field
 from enum import Enum
 from typing import Any
 
-
 class SlotKind(str, Enum):
     TIMELINE_ROW = "timeline_row"
+    FINDING_ROW = "finding_row"
     BRACKET_PLACEHOLDER = "bracket_placeholder"
     SECTION_EMPTY = "section_empty"
     FREEFORM = "freeform"
@@ -64,6 +64,22 @@ def classify_gap_spec(
                 neighbor_summary=f"Between timeline entries:\n{prev_line}\n{next_line}",
             )
 
+    if cursorish and rt == "rmp":
+        from src.grounded_update.findings_gap import try_parse_finding_continuation
+
+        cont = try_parse_finding_continuation(before_cursor, after_cursor)
+        if cont:
+            return GapSpec(
+                slot_kind=SlotKind.FINDING_ROW,
+                constraints={
+                    "next_num": cont.next_num,
+                    "target_risk": cont.target_risk,
+                    "last_line": cont.last_line,
+                    "existing_findings": cont.existing_findings,
+                },
+                neighbor_summary=f"After finding list; next is Finding {cont.next_num} (Risk: {cont.target_risk}).",
+            )
+
     if cursorish:
         win = f"{before_cursor[-500:]}{selection}{after_cursor[:500]}"
         if "[to be filled" in win.lower():
@@ -100,6 +116,7 @@ def augment_standard_prompt(base_prompt: str, gap: GapSpec | None) -> str:
         return (
             base_prompt
             + "\n\n---\n\nSlot focus: Prefer concrete facts from evidence for this section; "
-            "if unsupported, output a short explicit TBD-style phrase rather than inventing details."
+            "if unsupported, output a short explicit TBD-style phrase rather than inventing details. "
+            "Do NOT output document titles, section headings, or outlines of other sections."
         )
     return base_prompt

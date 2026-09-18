@@ -18,5 +18,5 @@ source .venv/bin/activate
 python -m pip install --upgrade pip
 pip install -r requirements.txt
 python -c "import fastapi, faiss, sentence_transformers; print('imports: ok')"
-echo "Next: copy .env (see .env.example), install Ollama, optional: npm install && npm run build (from project root, Vite)"
-echo "Run server:  source .venv/bin/activate && uvicorn server:app --host 0.0.0.0 --port 8000"
+echo "Next: copy .env (see .env.example), install Ollama, npm ci && npm run build (from project root, Vite)"
+echo "Run server:  source .venv/bin/activate && python -m uvicorn server:app --host 127.0.0.1 --port 8000"

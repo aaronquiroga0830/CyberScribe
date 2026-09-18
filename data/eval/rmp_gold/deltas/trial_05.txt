@@ -1,0 +1,2 @@
+Finding 12: VPN concentrator VPN-01 allows split tunneling without inspection. Risk: High. Recommendation: Require full tunnel or deploy CASB for split-tunnel traffic.
+Finding 13: Database DB-02 stores PII without column-level encryption at rest. Risk: High. Recommendation: Enable TDE and classify sensitive columns.
