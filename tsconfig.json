@@ -4,9 +4,8 @@
     "module": "ES2020",
     "lib": ["ES2020", "DOM"],
     "strict": true,
-    "noEmit": false,
-    "noEmitOnError": true,
-    "outDir": "web",
+    "noEmit": true,
+    "allowImportingTsExtensions": true,
     "rootDir": "web",
     "skipLibCheck": true,
     "moduleResolution": "bundler"

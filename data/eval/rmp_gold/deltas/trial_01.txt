@@ -1,0 +1,2 @@
+Finding 4: Default credentials on network switch SW-02 (admin/admin). Risk: Critical. Recommendation: Change default credentials immediately and enforce credential vault.
+Finding 5: SNMP v2c enabled with public community string on multiple devices. Risk: High. Recommendation: Disable SNMP v2 or migrate to SNMPv3 with authentication.

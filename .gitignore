@@ -5,9 +5,13 @@ __pycache__/
 data/missions/*
 !data/missions/.gitkeep
 data/indexes/
-data/agentic_rag.db
+data/*.db
+data/*.db-shm
+data/*.db-wal
 output/
 *.faiss
 *.pkl
 node_modules/
 web/dist/
+tmp/
+*.log

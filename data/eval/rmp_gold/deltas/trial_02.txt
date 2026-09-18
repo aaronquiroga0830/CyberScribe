@@ -1,0 +1,2 @@
+Finding 6: Workstation WS-07 missing endpoint detection and response (EDR). Risk: Medium. Recommendation: Deploy EDR to all workstations per policy.
+Finding 7: TLS 1.0 and 1.1 still enabled on legacy web application portal. Risk: Medium. Recommendation: Disable legacy TLS and enforce TLS 1.2+.

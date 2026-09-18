@@ -1,4 +1,6 @@
-# Agentic RAG MVP — Project Master Document
+# CyberScribe — Project Master Document
+
+> CyberScribe setup: see [README.md](../README.md) for current installation and startup commands. Earlier planning documents retain historical names.
 
 **Read this file first.** It is the single entry point for motivation, product intent, current implementation, and where to go for deeper detail.
 
@@ -49,7 +51,7 @@ Sections labeled **(current)** describe shipped behavior in this repo. **(target
 
 ## 2. Executive summary
 
-**Agentic RAG MVP (Mission RAG)** is a locally hosted, **mission-isolated** workspace where operators draft CPT/mission reports with **evidence-grounded AI assistance** and **mandatory human review** before anything is applied or exported. Users create a mission with a source folder (pick-up) and output folder (drop-off); the system ingests documents, builds a per-mission index, proposes **section- and block-level** edits, and supports a formal **operator → crew lead → MEL** approval chain ending in `.docx` export.
+**CyberScribe (CyberScribe)** is a locally hosted, **mission-isolated** workspace where operators draft CPT/mission reports with **evidence-grounded AI assistance** and **mandatory human review** before anything is applied or exported. Users create a mission with a source folder (pick-up) and output folder (drop-off); the system ingests documents, builds a per-mission index, proposes **section- and block-level** edits, and supports a formal **operator → crew lead → MEL** approval chain ending in `.docx` export.
 
 **Canonical product sentence:**
 
@@ -217,7 +219,7 @@ User (browser)  →  http://localhost:8000
   FastAPI (server.py)  ← uvicorn
        ├── REST /api/...  (missions, reports, auth, members, pipeline-jobs, …)
        ├── SSE  /api/stream/{mission_id}/{report_type}
-       └── Static  web/dist when built, else web/
+       └── Static  web/dist (required Vite build)
        ↓
   Pipeline (background thread): index if missing; structured edits ×4 report types;
        fallback RAG; set_pending_edits; SSE notify
@@ -258,7 +260,7 @@ Treat the **UI path** as the full product surface.
 | **RAG** | LangChain (loaders, splitter, retriever, ChatOllama, chains) |
 | **Vector store** | FAISS default; optional Chroma (`VECTOR_STORE_TYPE=chroma`) |
 | **Embeddings** | sentence-transformers `all-MiniLM-L6-v2` default; optional Ollama embeddings |
-| **LLM** | Ollama default `phi3`; optional per-report URLs or `OLLAMA_NUM_PARALLEL=2` |
+| **LLM** | Ollama default `gemma2:2b`; optional per-report URLs or `OLLAMA_NUM_PARALLEL=2` |
 | **DB** | SQLite `data/agentic_rag.db` |
 | **Scheduler** | APScheduler daily 02:00 (`python run_scheduler.py`) |
 | **Export** | `python-docx` via `html_to_docx.py` |
@@ -398,7 +400,7 @@ Base prefix: `/api`. Below is the **core surface**; see `server.py` for the full
 - **Panels:** Proposed changes, preview highlights, review status strip, comments, approval log, finalize
 - **Actions:** Update (5-minute client timeout), Reset with confirm, inline assist bubble/dock
 - **Build:** `npm run build` → `web/dist/`; server prefers dist when present
-- **Legacy:** Do not hand-edit `app.js`; source is `app.ts`
+- **Build:** TypeScript is source; Vite is the only supported web build. The legacy `app.js` was retired.
 
 ---
 
@@ -437,7 +439,7 @@ For the authoritative per-file table, see [PROJECT_CONTEXT.md §4](PROJECT_CONTE
 # From project root
 uvicorn server:app --host 0.0.0.0 --port 8000   # http://localhost:8000
 
-npm install && npm run build   # after TS/UI changes
+npm ci && npm run build   # after TS/UI changes
 
 python run_scheduler.py        # optional daily 02:00 jobs
 
@@ -446,7 +448,7 @@ python run.py run <mission_id> [--sequential]
 python run.py all <mission_id>
 ```
 
-**Ollama** must be running (default `phi3`). See project README if present for parallel Ollama setup.
+**Ollama** must be running (default `gemma2:2b`). See project README if present for parallel Ollama setup.
 
 ---
 

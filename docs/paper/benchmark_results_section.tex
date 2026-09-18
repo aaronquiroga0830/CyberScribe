@@ -1,0 +1,65 @@
+% Benchmark results section — paste into your thesis/paper.
+% Pilot numbers: Experiment 2, n=2 (2026-06-01). Update \BenchTrialN and table after 10-trial run completes.
+% Figures: output/benchmark/experiment2/fig_paper_pipeline_phases.pdf
+
+\subsection{Local LLM Benchmark for RMP Structured Updates}
+\label{sec:benchmark-rmp}
+
+\paragraph{Experimental setup.}
+We evaluated three Ollama chat models---\texttt{phi3}, \texttt{llama3.2:3b}, and \texttt{gemma2:2b}---on identical mission-scoped Risk Management Plan (RMP) structured-edit jobs through the production pipeline orchestrator (in-process, no HTTP). Each trial used mission \texttt{llm\_benchmark} over source documents in \texttt{sample\_mission}, Ollama embeddings (\texttt{nomic-embed-text}), and update intent \texttt{full\_refresh}. RMP updates did not trigger co-generation of Timeline reports. Trials were executed sequentially on a 16\,GB RAM CPU workstation with local Ollama.
+
+We report \textbf{\BenchTrialN{} independent trials per model} (canonical run; see Table~\ref{tab:benchmark-pilot} for preliminary $n{=}2$ pilot values used while scaling trial count). Phase timings (retrieval, structured-edit generation, parse/validate) were taken from pipeline job progress events. Structured success required at least one accepted block edit with no JSON parse failure and no structured-edit fallback. Factual grounding was scored by a local LLM-as-judge (\texttt{llama3.2:3b}, with cross-model assignment when the subject model was Llama).
+
+\paragraph{Pipeline latency.}
+Figure~\ref{fig:pipeline-phases} summarizes mean phase latency. Structured-edit \emph{generation} dominated end-to-end cost for all models. Retrieval loaded fixed mission chunk lists for RMP (crew logs, findings, and other document types) in tens of milliseconds; parse/validate added negligible overhead compared with generation.
+
+\begin{figure}[t]
+  \centering
+  \includegraphics[width=\linewidth]{fig_paper_pipeline_phases.pdf}
+  \caption{RMP pipeline phase latency by local LLM (\BenchTrialN{} trials per model).
+  (A)~Structured-edit generation time in seconds.
+  (B)~Retrieval and parse/validate overhead in milliseconds (linear scale).}
+  \label{fig:pipeline-phases}
+\end{figure}
+
+\paragraph{Preliminary findings ($n{=}2$ pilot).}
+Table~\ref{tab:benchmark-pilot} records the pilot run used to validate the harness before the canonical \BenchTrialN{}-trial study. These values are illustrative of run-to-run spread and should be superseded by the final table once the extended run completes.
+
+\begin{table}[t]
+  \centering
+  \caption{Pilot benchmark (Experiment 2, $n{=}2$ trials per model). Replace with canonical \BenchTrialN{}-trial aggregates.}
+  \label{tab:benchmark-pilot}
+  \begin{tabular}{lrrrr}
+    \hline
+    Model & Mean gen.\ (s) & Struct.\ success (\%) & Fallback (\%) & Mean grounding \\
+    \hline
+    \texttt{llama3.2:3b} & 8.6  & 100 & 0   & 4.38 \\
+    \texttt{gemma2:2b}   & 12.1 & 50  & 50  & 4.00 \\
+    \texttt{phi3}        & 117.2 & 0  & 100 & 4.00 \\
+    \hline
+  \end{tabular}
+\end{table}
+
+On the pilot data, \texttt{llama3.2:3b} was the only model with perfect structured success and sub-10\,s mean generation latency. \texttt{phi3} exhibited high generation latency and fell back to non-structured output in both trials despite judge-reported grounding scores of 4.0 on fallback edits. \texttt{gemma2:2b} showed bimodal behavior (one slow, fallback trial; one fast, successful trial).
+
+\paragraph{Canonical results ($n{=}$\BenchTrialN{}).}
+% --- UPDATE AFTER RUN: fill in \BenchLlamaGen, etc., or regenerate this paragraph from summary_table.csv ---
+Mean structured-edit generation times were \BenchLlamaGen\,s (\texttt{llama3.2:3b}), \BenchGemmaGen\,s (\texttt{gemma2:2b}), and \BenchPhiGen\,s (\texttt{phi3}). Structured success rates were \BenchLlamaSucc, \BenchGemmaSucc, and \BenchPhiSucc. Judge mean grounding scores (1--5) were \BenchLlamaGround, \BenchGemmaGround, and \BenchPhiGround, with hallucination rates \BenchLlamaHall, \BenchGemmaHall, and \BenchPhiHall.
+
+\paragraph{Interpretation and limitations.}
+Results characterize this hardware, mission corpus, and prompt path only; they do not establish statistical significance at small $n$. Judge scores measure agreement with retrieved source text under a rubric, not human expert adjudication. We do not claim superiority of one model beyond the reported pipeline reliability and latency trade-offs on the benchmark mission.
+
+% Macros — set \BenchTrialN to 10 after the extended run; update numeric macros from experiment2/summary_table.csv
+\newcommand{\BenchTrialN}{10}
+\newcommand{\BenchLlamaGen}{\textit{[pending]}}
+\newcommand{\BenchGemmaGen}{\textit{[pending]}}
+\newcommand{\BenchPhiGen}{\textit{[pending]}}
+\newcommand{\BenchLlamaSucc}{\textit{[pending]}}
+\newcommand{\BenchGemmaSucc}{\textit{[pending]}}
+\newcommand{\BenchPhiSucc}{\textit{[pending]}}
+\newcommand{\BenchLlamaGround}{\textit{[pending]}}
+\newcommand{\BenchGemmaGround}{\textit{[pending]}}
+\newcommand{\BenchPhiGround}{\textit{[pending]}}
+\newcommand{\BenchLlamaHall}{\textit{[pending]}}
+\newcommand{\BenchGemmaHall}{\textit{[pending]}}
+\newcommand{\BenchPhiHall}{\textit{[pending]}}

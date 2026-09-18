@@ -5,7 +5,7 @@
 import type { AnyExtension } from "@tiptap/core";
 import { Editor } from "@tiptap/core";
 import StarterKit from "@tiptap/starter-kit";
-import Underline from "@tiptap/extension-underline";
+import Paragraph from "@tiptap/extension-paragraph";
 import { TextStyle } from "@tiptap/extension-text-style";
 import FontFamily from "@tiptap/extension-font-family";
 import Color from "@tiptap/extension-color";
@@ -14,11 +14,7 @@ import { Table, TableRow, TableHeader, TableCell } from "@tiptap/extension-table
 import Placeholder from "@tiptap/extension-placeholder";
 import { ReportSection } from "./report-section-extension";
 import { editorHasPendingAssist, InlineAssistPending } from "./inline-assist-pending";
-import {
-  buildAnchorPayload,
-  ReportCommentHighlight,
-  stripReportCommentSpansFromHtml,
-} from "./report-comment-extension";
+import { buildAnchorPayload, ReportCommentHighlight, stripReportCommentSpansFromHtml } from "./report-comment-extension";
 
 export interface ReportEditorHandle {
   root: HTMLElement;
@@ -35,6 +31,23 @@ export interface ReportEditorHandle {
 
 const handles = new Map<string, ReportEditorHandle>();
 
+/** Preserve template CSS classes (e.g. template-placeholder) through parse/render. */
+const ReportParagraph = Paragraph.extend({
+  addAttributes() {
+    return {
+      ...this.parent?.(),
+      class: {
+        default: null,
+        parseHTML: (element) => element.getAttribute("class"),
+        renderHTML: (attributes) => {
+          if (!attributes.class) return {};
+          return { class: attributes.class as string };
+        },
+      },
+    };
+  },
+});
+
 /** Phase 3: request/response for POST .../inline-assist */
 export type InlineAssistRequest = {
   action: string;
@@ -43,6 +56,8 @@ export type InlineAssistRequest = {
   after_cursor: string;
   /** Full report HTML for server-side duplication / grounding checks (optional). */
   current_draft_html?: string;
+  /** Report section key at cursor/selection (Phase 2 §8.4). */
+  section_key?: string;
 };
 
 export type InlineAssistEvidenceChunk = {
@@ -106,10 +121,91 @@ function readAssistContext(editor: Editor): {
 } {
   const { from, to } = editor.state.selection;
   const doc = editor.state.doc;
+  const end = from === to ? from : to;
   const selection = from === to ? "" : doc.textBetween(from, to, "\n");
   const before_cursor = doc.textBetween(Math.max(0, from - 8000), from, "\n");
-  const after_cursor = doc.textBetween(from, Math.min(doc.content.size, from + 2000), "\n");
+  const after_cursor = doc.textBetween(end, Math.min(doc.content.size, end + 2000), "\n");
   return { from, to, selection, before_cursor, after_cursor };
+}
+
+/** Bracket placeholder span containing pos, e.g. [To be filled from mission data]. */
+function findBracketPlaceholderRange(editor: Editor, pos: number): { from: number; to: number } | null {
+  const doc = editor.state.doc;
+  const start = Math.max(0, pos - 400);
+  const end = Math.min(doc.content.size, pos + 400);
+  const slice = doc.textBetween(start, end, "\n");
+  const rel = pos - start;
+  let open = -1;
+  for (let i = rel; i >= 0; i--) {
+    if (slice[i] === "[") {
+      open = i;
+      break;
+    }
+  }
+  if (open < 0) return null;
+  let close = -1;
+  for (let i = Math.max(open, rel); i < slice.length; i++) {
+    if (slice[i] === "]") {
+      close = i;
+      break;
+    }
+  }
+  if (close < 0 || close < open) return null;
+  return { from: start + open, to: start + close + 1 };
+}
+
+function resolveFillPlaceholderApply(
+  editor: Editor,
+  ctx: ReturnType<typeof readAssistContext>
+): {
+  kind: "insert" | "replace";
+  replaceFrom: number | null;
+  replaceTo: number | null;
+  selection: string;
+  before_cursor: string;
+  after_cursor: string;
+  section_key?: string;
+} {
+  let replaceFrom: number | null = null;
+  let replaceTo: number | null = null;
+  let kind: "insert" | "replace" = "insert";
+  let selection = ctx.selection;
+  let before_cursor = ctx.before_cursor;
+  let after_cursor = ctx.after_cursor;
+  let anchorPos = ctx.from;
+
+  if (ctx.from !== ctx.to) {
+    replaceFrom = ctx.from;
+    replaceTo = ctx.to;
+    kind = "replace";
+    anchorPos = ctx.from;
+  } else {
+    const range = findBracketPlaceholderRange(editor, ctx.from);
+    if (range) {
+      replaceFrom = range.from;
+      replaceTo = range.to;
+      kind = "replace";
+      anchorPos = range.from;
+      selection = editor.state.doc.textBetween(range.from, range.to, "\n");
+      before_cursor = editor.state.doc.textBetween(Math.max(0, range.from - 8000), range.from, "\n");
+      after_cursor = editor.state.doc.textBetween(
+        range.to,
+        Math.min(editor.state.doc.content.size, range.to + 2000),
+        "\n"
+      );
+    }
+  }
+
+  const anchor = buildAnchorPayload(editor, anchorPos, anchorPos);
+  return {
+    kind,
+    replaceFrom,
+    replaceTo,
+    selection,
+    before_cursor,
+    after_cursor,
+    ...(anchor.sectionKey ? { section_key: anchor.sectionKey } : {}),
+  };
 }
 
 function attachDocumentCommentBubble(
@@ -206,6 +302,7 @@ function attachInlineAssist(editor: Editor, wrap: HTMLElement, runner: InlineAss
     <option value="operationalize">Operationalize</option>
     <option value="to_bullets">→ Bullets</option>
     <option value="to_paragraph">→ Paragraph</option>
+    <option value="fill_placeholder">Fill placeholder</option>
   `;
   const runSelBtn = document.createElement("button");
   runSelBtn.type = "button";
@@ -227,6 +324,7 @@ function attachInlineAssist(editor: Editor, wrap: HTMLElement, runner: InlineAss
     b.className = "tiptap-tb-btn";
     b.textContent = label;
     b.title = title;
+    b.addEventListener("mousedown", (e) => e.preventDefault());
     b.addEventListener("click", (e) => {
       e.preventDefault();
       void runCursorAction(action);
@@ -296,18 +394,36 @@ function attachInlineAssist(editor: Editor, wrap: HTMLElement, runner: InlineAss
   }
 
   async function runSelectionAction(action: string): Promise<void> {
-    const { from, to, selection, before_cursor, after_cursor } = readAssistContext(editor);
+    const ctx = readAssistContext(editor);
+    const { from, to, selection, before_cursor, after_cursor } = ctx;
     if (!action || from === to) return;
+    let kind: "insert" | "replace" = "replace";
+    let replaceFrom: number | null = from;
+    let replaceTo: number | null = to;
+    let assistSelection = selection;
+    let assistBefore = before_cursor;
+    let assistAfter = after_cursor;
+    const anchor = buildAnchorPayload(editor, from, to);
+    if (action === "fill_placeholder") {
+      const resolved = resolveFillPlaceholderApply(editor, ctx);
+      kind = resolved.kind;
+      replaceFrom = resolved.replaceFrom;
+      replaceTo = resolved.replaceTo;
+      assistSelection = resolved.selection;
+      assistBefore = resolved.before_cursor;
+      assistAfter = resolved.after_cursor;
+    }
     editor.chain().focus().clearInlineAssistPending().run();
     setBusy(true);
     showAssistStatus("Assist running…", "info");
     try {
       const res = await runner({
         action,
-        selection,
-        before_cursor,
-        after_cursor,
+        selection: assistSelection,
+        before_cursor: assistBefore,
+        after_cursor: assistAfter,
         current_draft_html: editor.getHTML(),
+        ...(anchor.sectionKey ? { section_key: anchor.sectionKey } : {}),
       });
       statusRow.style.display = "none";
       const html = suggestionToHtmlFragment(res.suggestion);
@@ -315,10 +431,10 @@ function attachInlineAssist(editor: Editor, wrap: HTMLElement, runner: InlineAss
         .chain()
         .focus()
         .applyInlineAssistPending({
-          kind: "replace",
+          kind,
           html,
-          replaceFrom: from,
-          replaceTo: to,
+          replaceFrom,
+          replaceTo,
           evidence: res.evidence_sources ?? [],
         })
         .run();
@@ -333,9 +449,35 @@ function attachInlineAssist(editor: Editor, wrap: HTMLElement, runner: InlineAss
   }
 
   async function runCursorAction(action: string): Promise<void> {
+    const ctx = readAssistContext(editor);
+    if (action === "fill_placeholder" && ctx.from !== ctx.to) {
+      await runSelectionAction(action);
+      return;
+    }
     editor.chain().focus().run();
     editor.chain().focus().clearInlineAssistPending().run();
-    const { selection, before_cursor, after_cursor } = readAssistContext(editor);
+    let selection = ctx.selection;
+    let before_cursor = ctx.before_cursor;
+    let after_cursor = ctx.after_cursor;
+    let kind: "insert" | "replace" = "insert";
+    let replaceFrom: number | null = null;
+    let replaceTo: number | null = null;
+    let section_key: string | undefined;
+
+    const anchor = buildAnchorPayload(editor, ctx.from, ctx.from);
+    if (anchor.sectionKey) section_key = anchor.sectionKey;
+
+    if (action === "fill_placeholder") {
+      const resolved = resolveFillPlaceholderApply(editor, ctx);
+      kind = resolved.kind;
+      replaceFrom = resolved.replaceFrom;
+      replaceTo = resolved.replaceTo;
+      selection = resolved.selection;
+      before_cursor = resolved.before_cursor;
+      after_cursor = resolved.after_cursor;
+      section_key = resolved.section_key;
+    }
+
     setBusy(true);
     showAssistStatus("Assist running…", "info");
     try {
@@ -345,6 +487,7 @@ function attachInlineAssist(editor: Editor, wrap: HTMLElement, runner: InlineAss
         before_cursor,
         after_cursor,
         current_draft_html: editor.getHTML(),
+        ...(section_key ? { section_key } : {}),
       });
       statusRow.style.display = "none";
       const html = suggestionToHtmlFragment(res.suggestion);
@@ -352,10 +495,10 @@ function attachInlineAssist(editor: Editor, wrap: HTMLElement, runner: InlineAss
         .chain()
         .focus()
         .applyInlineAssistPending({
-          kind: "insert",
+          kind,
           html,
-          replaceFrom: null,
-          replaceTo: null,
+          replaceFrom,
+          replaceTo,
           evidence: res.evidence_sources ?? [],
         })
         .run();
@@ -363,7 +506,8 @@ function attachInlineAssist(editor: Editor, wrap: HTMLElement, runner: InlineAss
         showAssistStatus(res.grounding_warnings.join(" "), "warn");
       }
     } catch (e) {
-      showAssistStatus(e instanceof Error ? e.message : "Assist failed", "error");
+      const msg = e instanceof Error ? e.message : "Assist failed";
+      showAssistStatus(msg, "error");
     } finally {
       setBusy(false);
     }
@@ -503,8 +647,9 @@ function createExtensions(): AnyExtension[] {
   return [
     StarterKit.configure({
       heading: { levels: [1, 2, 3, 4, 5, 6] },
+      paragraph: false,
     }),
-    Underline,
+    ReportParagraph,
     TextStyle,
     FontFamily.configure({ types: ["textStyle"] }),
     Color.configure({ types: ["textStyle"] }),

@@ -1,1 +1,1 @@
-# Agentic RAG MVP - source package
+# CyberScribe source package

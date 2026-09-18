@@ -1,7 +1,6 @@
 """Unified activity feed: jobs, approvals, comments, chat."""
 from __future__ import annotations
 
-import json
 from typing import Any
 
 from src.db.models import get_connection, init_db

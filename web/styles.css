@@ -1,4 +1,4 @@
-/* Liquid Glass – Mission RAG UI
+/* Liquid Glass – CyberScribe UI
    Translucent, depth, soft edges, high contrast for readability */
 
 :root {
@@ -2009,8 +2009,8 @@ label {
   min-width: 0;
   display: flex;
   justify-content: center;
-  /* Keeps floating comments in the gap to the right of the page instead of over the paper. */
-  padding-right: min(280px, 38vw);
+  /* Document stays centered; comment cards float over the margin without shifting the page. */
+  padding-right: 0;
   box-sizing: border-box;
 }
 
@@ -2389,50 +2389,6 @@ label {
   border-bottom: 1px solid rgba(110, 181, 255, 0.25);
 }
 
-/* Quill rich-text editor: toolbar and content match Liquid Glass theme */
-.draft-page .quill-draft-container,
-.draft-area .quill-draft-container {
-  background: rgba(0, 0, 0, 0.15);
-  border-radius: 8px;
-  border: 1px solid var(--glass-border);
-  overflow: hidden;
-}
-.draft-page .quill-draft-container .ql-toolbar.ql-snow,
-.draft-area .quill-draft-container .ql-toolbar.ql-snow {
-  background: var(--glass-bg);
-  border: none;
-  border-bottom: 1px solid var(--glass-border);
-  padding: 0.5rem;
-}
-.draft-page .quill-draft-container .ql-toolbar .ql-stroke,
-.draft-area .quill-draft-container .ql-toolbar .ql-stroke {
-  stroke: var(--text-muted);
-}
-.draft-page .quill-draft-container .ql-toolbar .ql-fill,
-.draft-area .quill-draft-container .ql-toolbar .ql-fill {
-  fill: var(--text-muted);
-}
-.draft-page .quill-draft-container .ql-toolbar .ql-picker,
-.draft-area .quill-draft-container .ql-toolbar .ql-picker {
-  color: var(--text);
-}
-.draft-page .quill-draft-container .ql-container.ql-snow,
-.draft-area .quill-draft-container .ql-container.ql-snow {
-  border: none;
-  font-size: 1rem;
-}
-.draft-page .quill-draft-container .ql-editor,
-.draft-area .quill-draft-container .ql-editor {
-  min-height: 40vh;
-  color: var(--text);
-  background: transparent;
-}
-.draft-page .quill-draft-container .ql-editor.ql-blank::before,
-.draft-area .quill-draft-container .ql-editor.ql-blank::before {
-  color: var(--text-muted);
-  font-style: normal;
-}
-
 /* Tiptap / ProseMirror (Phase 2): toolbar + page shell */
 .draft-page .tiptap-draft-container,
 .draft-area .tiptap-draft-container {
@@ -2647,15 +2603,25 @@ label {
 }
 
 .tiptap-page-shell {
-  background: rgba(0, 0, 0, 0.12);
-  padding: 1.25rem 1rem 2rem;
+  background: #3a3f4a;
+  padding: 1.75rem 1.25rem 2.5rem;
   min-height: 56vh;
+  display: flex;
+  justify-content: center;
+  width: 100%;
+  box-sizing: border-box;
+}
+
+.tiptap-mount {
+  width: 100%;
+  display: flex;
+  justify-content: center;
 }
 
 .report-workspace .draft-page {
   margin-top: 0.35rem;
   min-height: min(58vh, 760px);
-  padding: 1.35rem;
+  padding: 0.75rem 0.5rem 1rem;
 }
 
 .draft-page {
@@ -2664,6 +2630,17 @@ label {
 
 .report-workspace .draft-page .tiptap-draft-container {
   overflow: visible;
+  width: 100%;
+  max-width: none;
+}
+
+.report-workspace .tiptap-editor-wrap {
+  width: 100%;
+}
+
+.report-workspace .tiptap-page-shell {
+  width: 100%;
+  padding: 1.5rem 0.75rem 2rem;
 }
 
 .report-workspace .tiptap-mount .ProseMirror {
@@ -2671,46 +2648,88 @@ label {
 }
 
 .tiptap-mount .ProseMirror {
-  max-width: min(62rem, 100%);
+  /* US Letter–width page (~8.5in @ 96dpi); stays readable on wide monitors */
+  width: min(816px, 100%);
+  max-width: 100%;
   margin: 0 auto;
-  min-height: 54vh;
-  padding: 1.5rem 1.75rem 2rem;
-  border-radius: 4px;
-  background-image: repeating-linear-gradient(
-    to bottom,
-    #ffffff 0,
-    #ffffff var(--report-page-inner-height, 960px),
-    #c8c8c8 var(--report-page-inner-height, 960px),
-    #c8c8c8 calc(var(--report-page-inner-height, 960px) + 18px)
-  );
+  min-height: min(72vh, 920px);
+  padding: 2.75rem 3rem 3rem;
+  border-radius: 2px;
+  background: #ffffff;
+  background-image: none;
   color: #1a1d24;
-  box-shadow: 0 4px 24px rgba(0, 0, 0, 0.35);
-  line-height: 1.55;
-  font-size: 1rem;
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.28), 0 0 0 1px rgba(0, 0, 0, 0.06);
+  line-height: 1.6;
+  font-size: 1.0625rem;
+  font-family: Georgia, "Times New Roman", Times, serif;
   outline: none;
+  box-sizing: border-box;
 }
 
 .tiptap-mount .ProseMirror:focus {
   box-shadow: 0 4px 28px rgba(110, 181, 255, 0.22), 0 4px 24px rgba(0, 0, 0, 0.35);
 }
 
-/* Structured report sections (data-section-key / report_section_definitions) */
+/* Structured report sections — subtle document breaks (section keys stay in HTML for RAG). */
 .tiptap-mount .ProseMirror section.report-section {
-  margin: 0 0 1.1rem;
-  padding: 0.5rem 0 0.35rem 0.75rem;
-  border-left: 3px solid rgba(110, 181, 255, 0.5);
-  border-radius: 0 8px 8px 0;
+  margin: 0 0 1.35rem;
+  padding: 0;
+  border: none;
+  border-radius: 0;
+}
+
+.tiptap-mount .ProseMirror section.report-section[data-section-key="title"] {
+  margin-bottom: 1.5rem;
+  padding-bottom: 0.75rem;
+  border-bottom: 1px solid #c8cdd6;
+  text-align: center;
+}
+
+.tiptap-mount .ProseMirror section.report-section[data-section-key="title"] h1 {
+  text-align: center;
+  font-size: 1.85rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  margin: 0;
+}
+
+/* Skeleton: literal blank lines around placeholders; no extra paragraph margins */
+.tiptap-mount .ProseMirror p.template-blank-line,
+.tiptap-mount .ProseMirror p.template-placeholder {
+  margin: 0;
+  padding: 0;
+}
+
+.tiptap-mount .ProseMirror p.template-blank-line {
+  line-height: 1.35;
+}
+
+.tiptap-mount .ProseMirror section.report-section:not([data-section-key="title"]) {
+  margin-bottom: 0;
+}
+
+.tiptap-mount .ProseMirror section.report-section:not([data-section-key="title"]) h2 {
+  font-size: 1.12rem;
+  font-weight: 700;
+  color: #2a3140;
+  margin: 0;
+  padding-bottom: 0.3em;
+  border-bottom: 1px solid #e2e6ed;
+}
+
+.tiptap-mount .ProseMirror section.report-section:not([data-section-key="title"]) h2 + p.template-blank-line {
+  margin-top: 0;
 }
 
 .tiptap-mount .ProseMirror section.report-section[data-section-policy="locked_heading"] {
-  border-left-color: rgba(140, 145, 160, 0.65);
+  border: none;
 }
 
 .tiptap-mount .ProseMirror section.report-section:last-child {
   margin-bottom: 0;
 }
 
-.tiptap-mount .ProseMirror p {
+.tiptap-mount .ProseMirror p:not(.template-blank-line):not(.template-placeholder) {
   margin: 0 0 0.65em;
 }
 
@@ -2776,7 +2795,6 @@ label {
 
 /* Pending proposed edits highlighted in editor (from preview HTML) */
 .draft-area .pending-edit-highlight,
-.draft-page .quill-draft-container .pending-edit-highlight,
 .draft-page .tiptap-draft-container .pending-edit-highlight,
 .tiptap-mount .ProseMirror .pending-edit-highlight {
   background: rgba(255, 193, 7, 0.28);

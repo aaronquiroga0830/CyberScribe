@@ -242,10 +242,6 @@ def assert_can_run_ai(user_id: str, mission_id: str) -> dict[str, Any]:
     return mem
 
 
-def assert_can_manage_mission(user_id: str, mission_id: str) -> dict[str, Any]:
-    return require_mel(user_id, mission_id)
-
-
 def assert_review_transition_allowed(
     user_id: str, mission_id: str, from_status: str, to_status: str
 ) -> None:

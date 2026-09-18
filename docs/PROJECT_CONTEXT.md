@@ -1,5 +1,7 @@
 # Project Context: Secure Agentic Multi-Modal RAG MVP
 
+> CyberScribe setup: see [README.md](../README.md) for current installation and startup commands. Earlier planning documents retain historical names.
+
 > **Superseded as the read-first doc:** Use [PROJECT_MASTER.md](PROJECT_MASTER.md) for the full picture (motivation, product, technical, roadmap). This file remains for focused reference.
 
 **Purpose of this document:** Give any reader (human or AI) a complete, holistic view of the project so they can work on it without re-reading transcripts or re-exploring the codebase. Read this file first when joining the project or starting a new chat about it.
@@ -8,7 +10,7 @@
 
 ## 1. What This Project Is
 
-- **Name:** Agentic RAG MVP (Mission RAG).
+- **Name:** CyberScribe (CyberScribe).
 - **Proposal copy:** Stakeholder-facing lead sentence and supporting bullets — [PLATFORM_VALUE_PROPOSAL.md](PLATFORM_VALUE_PROPOSAL.md).
 - **Goal:** Mission-isolated, locally hosted RAG pipeline for CPT (mission) documents. Users start missions in the UI with a **mission name**, **document pick-up path** (source), and **drop-off path** (where to write final reports). The system ingests from the source folder, builds a vector index, and generates **RMP (Risk Mitigation Plan)** and **Mission Timeline** drafts. Users review (accept/reject/edit) in the UI. Built for long runs (e.g. ~5 months) with an optional daily scheduler.
 - **“Agentic” here:** Two specialized **agents** (RMP agent, Timeline agent), each with its own retriever and system prompt. **Orchestration is deterministic Python code** in `pipeline.py` and `server.py` — there is **no** main “router” or LLM that decides which sub-agent to call. The pipeline always runs both agents per mission when you run the pipeline.
@@ -26,7 +28,7 @@ User (browser)  →  http://localhost:8000
   FastAPI (server.py)  ← uvicorn
        ├── REST: /api/missions, /api/missions/{id}/evidence-delta (Phase 4), /api/run-pipeline, /api/.../reports/.../accept|reject|save|preview|pending-edits|inline-assist|edits/{id}/accept|edits/{id}/reject|accept-all-edits|reject-all-edits|apply-edits|update|reset, **Phase 5:** `PATCH .../review-status`, `GET|POST .../comments`, `GET .../approval-log`, `POST .../finalize`, /api/status
        ├── SSE:  /api/stream/{mission_id}/{report_type}  (live RMP/Timeline streams)
-       └── Static: `web/dist` when built (`npm run build`), else `web/`
+       └── Static: `web/dist` after `npm run build` (required)
        ↓
   Pipeline (background thread): if !mission_index_exists then build_mission_index else skip; structured edits (LLM JSON per block) for RMP/Timeline/AAR/SITREP; fallback full-draft RAG + synthetic pending edit when no valid edits; set_pending_edits or set_pending; push to SSE
        ↓
@@ -52,7 +54,7 @@ User (browser)  →  http://localhost:8000
 | **DB** | SQLite at `data/agentic_rag.db` |
 | **Scheduler** | APScheduler; daily run at 02:00 for all active missions (`python run_scheduler.py`) |
 
-- **requirements.txt:** langchain, langchain-community, faiss-cpu, sentence-transformers, pypdf, python-docx (for .docx report output), apscheduler, fastapi, uvicorn, python-dotenv, requests. Optional: chromadb, unstructured (for .docx loaders).
+- **requirements.txt:** langchain-core, langchain-community, langchain-text-splitters, faiss-cpu, sentence-transformers, pypdf, python-docx (DOCX input/output), apscheduler, fastapi, starlette, pydantic, uvicorn, bcrypt, xhtml2pdf, python-dotenv. Optional: chromadb. Research tools are in requirements-research.txt.
 - **package.json:** Vite + Tiptap (devDependencies). `npm run build` runs `vite build` → `web/dist/`. Optional `npm run typecheck` (`tsc --noEmit`). No Node at runtime for the served app.
 
 ---
@@ -63,7 +65,7 @@ User (browser)  →  http://localhost:8000
 
 | File | Role |
 |------|------|
-| **server.py** | FastAPI app: REST routes, SSE streaming, pipeline thread (`_run_pipeline`), static mount for `web/dist/assets` (when dist exists) + SPA from `WEB_ROOT` (`web/dist` or `web/`), SPA fallback. Pipeline uses `_run_structured_edits` for report types in `USE_STRUCTURED_EDITS_FOR`; checks `mission_index_exists` before building index; handles queue messages `"edits"` (set_pending_edits) and `"sources"` (set_pending for legacy path). Exposes `.../preview`, `.../pending-edits`, `.../inline-assist` (Phase 3 scoped LLM), `.../reset`, `.../update`, and edit accept/reject/apply endpoints. **Phase 5:** `request_mission_update` omits MEL-approved/final report types; `409` on save/apply/accept/reset/edits when `review_status` is `final`, and on update/inline-assist when MEL-approved or final; review-status, comments, approval-log, finalize routes. State: `stream_buffers`, `stream_queues`, `stream_lock`, `running_mission_id`. |
+| **server.py** | FastAPI app: REST routes, SSE streaming, pipeline thread (`_run_pipeline`), static mount for `web/dist/assets` (when dist exists) + SPA from `WEB_ROOT` (`web/dist`, built with Vite), SPA fallback. Pipeline uses `_run_structured_edits` for report types in `USE_STRUCTURED_EDITS_FOR`; checks `mission_index_exists` before building index; handles queue messages `"edits"` (set_pending_edits) and `"sources"` (set_pending for legacy path). Exposes `.../preview`, `.../pending-edits`, `.../inline-assist` (Phase 3 scoped LLM), `.../reset`, `.../update`, and edit accept/reject/apply endpoints. **Phase 5:** `request_mission_update` omits MEL-approved/final report types; `409` on save/apply/accept/reset/edits when `review_status` is `final`, and on update/inline-assist when MEL-approved or final; review-status, comments, approval-log, finalize routes. State: `stream_buffers`, `stream_queues`, `stream_lock`, `running_mission_id`. |
 | **run.py** | CLI: `build <mission_id> [--source PATH]`, `run <mission_id> [--sequential]`, `all <mission_id> [--source] [--sequential]`. Uses `build_mission_index` and `run_all_report_agents`. |
 | **run_scheduler.py** | Entrypoint for daily pipeline: `init_db()`, `start_scheduler()`, then sleep loop; Ctrl+C shuts down scheduler. |
 | **requirements.txt** | Python deps (see above). |
@@ -95,7 +97,6 @@ User (browser)  →  http://localhost:8000
 | **retrieve/retriever.py** | FixedListRetriever(docs). _load_chunks_by_type(mission_id, doc_types). get_mission_retriever(mission_id, k=, report_type=): timeline→all crew_log; rmp→crew_log+findings+other; else FAISS as_retriever(k=k). |
 | **ingest/loaders.py** | infer_doc_type(path, mission_path)→crew_log|findings|other. LOADER_MAP .txt/.pdf/.docx. load_file (adds source, mission_file), load_mission_documents (sets doc_type per doc). |
 | **ingest/chunking.py** | chunk_documents(documents, chunk_size=1000, chunk_overlap=200), RecursiveCharacterTextSplitter, optional normalize. |
-| **ingest/daily.py** | run_daily_ingestion(mission_id): build_mission_index (full rebuild for FAISS). |
 | **templates/prompts.py** | Template-as-query and generation prompts: RMP_TEMPLATE_QUERY, TIMELINE_TEMPLATE_QUERY, RMP_GENERATION_PROMPT, TIMELINE_GENERATION_PROMPT (place {context}); AAR and SITREP equivalents. Structured-edit prompts per report type: RMP_STRUCTURED_EDIT_PROMPT, TIMELINE_STRUCTURED_EDIT_PROMPT, AAR_STRUCTURED_EDIT_PROMPT, SITREP_STRUCTURED_EDIT_PROMPT. REPORT_SPECS / generation prompts used in fallback when LLM returns no valid structured edits. |
 | **utils/context_cleaner.py** | clean_context_for_llm(context): drop lines matching hex, UUID/signature, repeated patterns so LLM doesn’t copy junk. |
 | **sections.py** | Phase 4: `sections_to_update(mission_id, new_or_changed_items)` maps each file’s `doc_type` to likely `(report_type, section_key)` pairs (telemetry + overview UI). |
@@ -118,7 +119,6 @@ User (browser)  →  http://localhost:8000
 | **tiptap-editor.ts** | Tiptap/ProseMirror: `createReportEditor`, `getReportEditor`, `destroyAllReportEditors`; toolbar; optional Phase 3 inline assist (bubble + dock + staging Accept/Reject); HTML via `getHTML` / `setContent` for save, preview, SSE streams. |
 | **report-section-extension.ts** | Custom block `reportSection`: parses/serializes structured `<section data-section-key>` (aligned with `report_section_definitions`). |
 | **app.ts** | TypeScript source: API base /api, get/post/patch, getHash, getHashParts, navigate. Hash routes: #/mission/<id>/overview, #/mission/<id>/<report_type> (single-report view). renderMissionList (sidebar: mission context menu; per-report three-dots menu with Update and Reset), renderNewMissionForm, renderMissionOverview, renderReportView, renderContent (Tiptap draft, proposed-changes panel, per-edit Accept/Reject, Accept all/Reject all, preview fetch and highlight; **Phase 5:** review status strip, comments, approval log, Finalize; disables Update/save/assist/edits when server policy locks). renderDocumentsView, renderPending. connectStream(missionId, reportType, boxEl, onDone): EventSource /api/stream/..., buf/chunk/done. Reset: confirm "Are you sure you want to reset the draft?" then POST .../reset. 5-minute timeout for Update; auto-apply after accept (single or all). render() from hash. updateSidebarStatus every 5s. |
-| **app.js** | Legacy `tsc` output (optional `npm run build:legacy`); production uses Vite `web/dist` only. |
 | **styles.css** | Liquid Glass: :root vars (glass, text, accent, danger, success, radius, blur). .app grid, .sidebar, .main. .glass, .glass-strong. Buttons, form, mission-list, .mission-item.active, .section, .doc-block, .stream-box.streaming, .pending-box, .actions, .pill. Tiptap: `.tiptap-toolbar`, `.tiptap-page-shell`, ProseMirror page styling, Phase 3 `.tiptap-assist-*`. |
 
 ### scripts/
@@ -233,7 +233,7 @@ flowchart LR
 
 - **Chroma:** VECTOR_STORE_TYPE=chroma, pip install chromadb. Enables incremental add if implemented in vectorstore.
 - **Section-aware hints:** `sections_to_update` maps new/changed files to likely `(report_type, section_key)` for job events and the evidence-delta card; the pipeline still runs full structured edits per report until true scoped generation exists.
-- **.docx:** pip install unstructured; loaders already have UnstructuredWordDocumentLoader.
+- **.docx:** handled by python-docx (installed with the application); no unstructured dependency is needed.
 - **AAR/Sitrep:** Fully in the pipeline (structured edits + fallback) for all four report types; templates and report types in DB and document_templates.
 - **Future autonomy (orchestrator, dependencies):** The design leaves room for a later “orchestrator” agent without changing the current Python-controlled flow. (a) Update signals (manual button or scheduler) are handled by `request_mission_update`; a future LLM orchestrator could implement the same contract (decide which report types are impacted, then call the same `POST .../update` and report endpoints). (b) Report dependency order is already expressed in `REPORT_DEPENDENCIES` and `_report_run_order` in server.py; when dependency execution is implemented, the orchestrator would run dependent reports first and pass their content (e.g. Timeline into RMP) as context. (c) No autonomous LLM router is implemented; Python remains the single caller of per-report update and edit APIs.
 

@@ -9,7 +9,7 @@ from langchain_core.vectorstores import VectorStore
 
 from config.settings import INDEX_DIR
 from src.index.vectorstore import get_vectorstore
-from src.ingest.loaders import load_file, infer_doc_type
+from src.ingest.loaders import load_file
 from src.ingest.chunking import chunk_documents
 from src.ingest.manifest import new_or_changed_files
 from src.auxiliary_service import load_auxiliary_documents

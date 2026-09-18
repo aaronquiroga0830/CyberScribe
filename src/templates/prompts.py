@@ -39,8 +39,15 @@ Source text (for document creation only):
 {context}
 """
 
+# Appended to structured-edit prompts (server.py) for JSON mode / parsing reliability.
+STRUCTURED_EDIT_JSON_SUFFIX = """
+Output a single JSON object only, with key "edits" whose value is an array of edit objects.
+Do not include old_html (the system already has each block's HTML). Include new_html for replacements/inserts.
+Use valid JSON escaping for quotes inside new_html. No markdown fences or commentary.
+"""
+
 # ---- RMP structured edits (Phase 1 collaborative editor: output JSON only) ----
-RMP_STRUCTURED_EDIT_PROMPT = """You are an editor proposing minimal changes to a Risk Mitigation Plan (RMP). You must output ONLY a valid JSON array of edit objects. No other text, no markdown, no explanation.
+RMP_STRUCTURED_EDIT_PROMPT = """You are an editor proposing minimal changes to a Risk Mitigation Plan (RMP). You must output ONLY valid JSON. No other text, no markdown, no explanation.
 
 Current document (HTML) with block structure:
 {current_document}
@@ -56,9 +63,9 @@ Rules:
 - Preserve headings, lists, bold, underline; do not flatten the document.
 - Prefer modifying existing paragraphs over appending redundant content.
 - reason: one short sentence why this edit. evidence: list of source file names if applicable.
-- Output format: [{{{{"edit_id":"uuid1","section_id":"...","target_block_id":"section_0_block_1","operation":"replace","reason":"...","evidence":["file.txt"],"old_html":"<p>...</p>","new_html":"<p>...</p>"}}}}, ...]
+- Output format: {{"edits": [{{{{"edit_id":"uuid1","section_id":"...","target_block_id":"section_0_block_1","operation":"replace","reason":"...","evidence":["file.txt"],"new_html":"<p>...</p>"}}}}]}}
 
-Output ONLY the JSON array:"""
+Output ONLY the JSON object with key "edits":"""
 
 TIMELINE_STRUCTURED_EDIT_PROMPT = """You are an editor proposing minimal changes to a Mission Timeline document. You must output ONLY a valid JSON array of edit objects. No other text, no markdown, no explanation.
 

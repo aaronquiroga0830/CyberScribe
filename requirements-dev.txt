@@ -1,0 +1,4 @@
+-r requirements.txt
+
+# FastAPI TestClient for isolated API smoke tests.
+httpx==0.28.1

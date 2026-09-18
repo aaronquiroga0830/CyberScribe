@@ -61,7 +61,9 @@ def run_template_rag_agent(
         ("human", generation_prompt_template),
     ])
     chain = prompt | llm | StrOutputParser()
-    content = chain.invoke({"context": context})
+    from src.utils.llm_invoke import invoke_chain_with_timeout
+
+    content = invoke_chain_with_timeout(chain, {"context": context})
     return (content, sources)
 
 
