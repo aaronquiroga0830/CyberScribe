@@ -611,9 +611,9 @@ function renderHubTopbarHtml(u: LoggedInUser): string {
   return `
       <header class="hub-topbar glass" role="banner">
         <div class="hub-topbar-inner">
-          <button type="button" class="hub-topbar-left hub-brand-logo-btn" aria-label="RAG Pipeline — Mission Control">
+          <button type="button" class="hub-topbar-left hub-brand-logo-btn" aria-label="CyberScribe — Mission Control">
             <img src="/logo.png" width="48" height="48" alt="" class="hub-topbar-logo" decoding="async" />
-            <span class="hub-pipeline-title">RAG Pipeline</span>
+            <span class="hub-pipeline-title">CyberScribe</span>
           </button>
           <div class="hub-topbar-right">
             <span class="hub-user-name">${who}</span>
@@ -661,7 +661,7 @@ function canAccessMissionHub(): boolean {
   return currentUser.is_admin || !!currentUser.has_mel_role;
 }
 
-/** Logo / RAG Pipeline title: MEL & admin → Mission Control; operators → current mission overview. */
+/** CyberScribe logo/title: MEL & admin → Mission Control; operators → current mission overview. */
 function navigateFromBrandLogo(): void {
   if (!currentUser) return;
   if (canAccessMissionHub()) {
@@ -717,9 +717,9 @@ function renderMissionWorkspaceShell(main: HTMLElement, missionId: string, hashS
     <div class="mission-workspace-page">
       <header class="mission-workspace-topbar glass" role="banner">
         <div class="mission-workspace-topbar-inner">
-          <button type="button" class="mission-workspace-brand hub-brand-logo-btn" aria-label="RAG Pipeline — go to home for your role">
+          <button type="button" class="mission-workspace-brand hub-brand-logo-btn" aria-label="CyberScribe — go to home for your role">
             <img src="/logo.png" width="48" height="48" alt="" class="hub-topbar-logo" decoding="async" />
-            <span class="hub-pipeline-title">RAG Pipeline</span>
+            <span class="hub-pipeline-title">CyberScribe</span>
           </button>
           <nav class="mission-workspace-tabs" aria-label="Mission sections">${tabsHtml}</nav>
           <div class="mission-workspace-user hub-topbar-right">
