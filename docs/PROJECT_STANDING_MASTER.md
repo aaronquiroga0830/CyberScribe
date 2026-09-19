@@ -2,7 +2,6 @@
 
 **Project:** CyberScribe (formerly Agentic RAG MVP)
 **Author context:** Aaron Quiroga — CPT operator; Lincoln Laboratory program
-**Presentation:** *Collaborative AI for Cyber Mission Planning, Analysis, and Reporting*
 **Paper:** RAG architecture for cyber mission planning and report writing
 **Document purpose:** Single exhaustive snapshot of mission, goals, current standing, architecture, features, experiments, assets, and limitations
 **Last updated:** 2026-06-03
@@ -29,8 +28,8 @@
 13. [Two execution paths (UI vs CLI/scheduler)](#13-two-execution-paths-ui-vs-clisscheduler)
 14. [Technology stack and configuration](#14-technology-stack-and-configuration)
 15. [Benchmark and experiments (complete record)](#15-benchmark-and-experiments-complete-record)
-16. [Evaluation assets (gold set, judge, demo)](#16-evaluation-assets-gold-set-judge-demo)
-17. [Paper and presentation alignment](#17-paper-and-presentation-alignment)
+16. [Evaluation assets (gold set and judge)](#16-evaluation-assets-gold-set-and-judge)
+17. [Paper alignment](#17-paper-alignment)
 18. [Repository layout (every major component)](#18-repository-layout-every-major-component)
 19. [Automated tests](#19-automated-tests)
 20. [Known limitations and risks](#20-known-limitations-and-risks)
@@ -143,7 +142,6 @@ Implemented in `src/report_review_service.py`: status transitions, threaded comm
 - Inline assist: rewrite, fill placeholder, next sentence, findings continuation, timeline gap, etc.
 - RBAC with session cookies and mission membership roles
 - Benchmark harness with n=100/model structured-edit comparison (phi3, gemma2:2b, llama3.2:3b)
-- Demo seeding and screenshot capture for presentation
 - Gold eval set (`data/eval/rmp_gold/`) for RMP checklist/rubric and incremental deltas
 
 ### Recent engineering (2026 session highlights)
@@ -151,9 +149,9 @@ Implemented in `src/report_review_service.py`: status transitions, threaded comm
 - **Fill placeholder:** Section-scoped prompts, evidence attribution (not all retrieved files), replace-vs-insert fix, template blank-line spacing, `ReportParagraph` class preservation
 - **Findings gap:** RMP numbered finding list continuation (`Finding N+1` with matching risk level)—mirrors timeline gap pattern
 - **Structured edit reliability mitigations:** JSON mode, parse hardening, benchmark mode, invoke timeouts
-- **Publication figures:** experiment3 folder = relabeled figures from `experiment2_mitigated_n100` (300 trials)
+- **Research figures:** experiment3 folder = relabeled figures from `experiment2_mitigated_n100` (300 trials)
 
-### Primary benchmark conclusion (presentation/paper)
+### Primary benchmark conclusion
 
 On identical sample-mission RMP structured-edit trials (n=100 per model, 300s job / 210s invoke caps):
 
@@ -512,23 +510,16 @@ Local CPU workstation (~16 GB RAM), sequential trials, Ollama local inference—
 
 ---
 
-## 16. Evaluation assets (gold set, judge, demo)
+## 16. Evaluation assets (gold set and judge)
 
 ### `data/eval/rmp_gold/`
 
 | Asset | Purpose |
 |-------|---------|
-| `seed_rmp.html` | Gold RMP HTML (demo screenshots, eval seed—not live benchmark output) |
+| `seed_rmp.html` | Gold RMP HTML used as an evaluation seed—not live benchmark output |
 | `checklist.json` | Checklist items for judge scoring |
 | `RUBRIC.md` | Judge rubric text |
 | `deltas/trial_01.txt` … `trial_05.txt` | Incremental finding lines for experiment3-style updates |
-
-### Demo tooling
-
-| Script | Purpose |
-|--------|---------|
-| `scripts/seed_demo_rmp.py` | Load seed into product mission (e.g. `test1`) — **not** benchmark missions |
-| `scripts/capture_demo_screenshots.py` | Playwright → `output/demo/screenshots/` |
 
 ### Benchmark missions (do not overwrite for experiments)
 
@@ -537,15 +528,7 @@ Local CPU workstation (~16 GB RAM), sequential trials, Ollama local inference—
 
 ---
 
-## 17. Paper and presentation alignment
-
-### Presentation script topics
-
-- CPT problem → local HITL RAG solution
-- Architecture diagram (ingest → FAISS → LangChain → Ollama gemma2:2b)
-- Mission workflow slides (login, mission control, overview, document draft)
-- Benchmark: 100 trials × 3 models; success definition; two latency charts
-- Future work: unit deployment, retrieval quality, adaptive orchestration
+## 17. Paper alignment
 
 ### Paper sections (draft status)
 
@@ -563,7 +546,6 @@ Local CPU workstation (~16 GB RAM), sequential trials, Ollama local inference—
 - Use **structured edit** (no hyphen) in new prose
 - Do **not** claim LLM-as-judge defined success for n=100 run
 - Sample mission corpus—not operational classified export
-- Product demo may use **seed_rmp.html** as example draft (label as demo fixture)
 
 ---
 
@@ -599,7 +581,7 @@ Environment loader: Ollama, embeddings, paths, timeouts, per-report Ollama URLs.
 
 ### `scripts/` (complete list)
 
-`llm_benchmark.py`, `benchmark_judge.py`, `run_benchmark_10trials.ps1`, `run_benchmark_10trials_worker.ps1`, `run_experiment2_*.ps1` (unattended, detached, resume, mitigated, mitigated_n100, mitigated_n100_resume), `run_experiment3.ps1`, `run_experiment3_worker.ps1`, `run_llama_fair_diagnostic.ps1`, `recover_experiment2_pilot.py`, `cleanup_benchmark_state.py`, `stop_benchmark_and_cleanup.ps1`, `keep_awake.ps1`, `seed_demo_rmp.py`, `capture_demo_screenshots.py`, `clear_mission_reports.py`, `bootstrap_linux_venv.sh`, `pack_for_linux.ps1`, `smoke_uvicorn.sh`
+`llm_benchmark.py`, `benchmark_judge.py`, `run_benchmark_10trials.ps1`, `run_benchmark_10trials_worker.ps1`, `run_experiment2_*.ps1` (unattended, detached, resume, mitigated, mitigated_n100, mitigated_n100_resume), `run_experiment3.ps1`, `run_experiment3_worker.ps1`, `run_llama_fair_diagnostic.ps1`, `recover_experiment2_pilot.py`, `cleanup_benchmark_state.py`, `stop_benchmark_and_cleanup.ps1`, `keep_awake.ps1`, `clear_mission_reports.py`, `bootstrap_linux_venv.sh`, `pack_for_linux.ps1`, `smoke_uvicorn.sh`
 
 ### `docs/`
 
@@ -662,7 +644,7 @@ Run: `python -m unittest discover tests`
 
 ## 21. Future work
 
-From presentation, paper, and planning pack:
+From the paper and planning pack:
 
 1. **Initial deployment** in unit testing environment on weapon-system hardware
 2. **Retrieval quality** — section-aware queries, reranking, better chunking
