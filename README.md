@@ -187,15 +187,14 @@ API smoke tests use a temporary database and do not call Ollama. GitHub Actions 
 
 ## Research tools
 
-Benchmark, screenshot, and presentation dependencies are separate from the application:
+Benchmark dependencies are separate from the application:
 
 ```bash
 python -m pip install -r requirements-research.txt
-python -m playwright install chromium
 python scripts/llm_benchmark.py --help
 ```
 
-Chromium is needed only for screenshot/browser tooling. The benchmark entry point is `scripts/llm_benchmark.py`; runs write to `output/benchmark/`. Preserve benchmark outputs used by papers and presentations. Research notes and assets may be maintained locally alongside the application.
+The benchmark entry point is `scripts/llm_benchmark.py`; runs write to `output/benchmark/`. Preserve benchmark outputs used by research and evaluation. Research notes and assets may be maintained locally alongside the application.
 
 ## Data and backups
 
